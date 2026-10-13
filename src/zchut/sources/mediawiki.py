@@ -6,12 +6,20 @@ import urllib.request
 from collections.abc import Callable, Mapping
 from datetime import date, datetime
 from html import escape
+from http.client import HTTPMessage
 from pathlib import Path
+from typing import IO
 from urllib.parse import urlencode, urlsplit
 
 from pydantic import BaseModel, ValidationError
 
-from zchut.sources.fetch import FetchError, Politeness, cache_raw, canonical_url
+from zchut.sources.fetch import (
+    MAX_REDIRECTS,
+    FetchError,
+    Politeness,
+    cache_raw,
+    canonical_url,
+)
 from zchut.types import FetchedPage
 
 Opener = Callable[[str, Mapping[str, str]], bytes]
@@ -43,11 +51,33 @@ class _RevisionResponse(BaseModel):
     query: _RevisionQuery
 
 
+class SameHostRedirectHandler(urllib.request.HTTPRedirectHandler):
+    max_redirections = MAX_REDIRECTS
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: HTTPMessage,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        target = urlsplit(newurl)
+        if target.scheme != "https" or target.netloc != urlsplit(req.full_url).netloc:
+            raise FetchError(f"cross-host redirect to {target.netloc} refused")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def urllib_opener(timeout_s: float) -> Opener:
+    opener = urllib.request.build_opener(SameHostRedirectHandler())
+
     def open_url(url: str, headers: Mapping[str, str]) -> bytes:
+        if urlsplit(url).scheme != "https":
+            raise FetchError(f"refusing non-https url {url}")
         request = urllib.request.Request(url, headers=dict(headers))
         try:
-            with urllib.request.urlopen(request, timeout=timeout_s) as response:
+            with opener.open(request, timeout=timeout_s) as response:
                 body: bytes = response.read()
                 return body
         except (urllib.error.URLError, TimeoutError) as exc:

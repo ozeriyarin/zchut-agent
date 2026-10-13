@@ -62,8 +62,7 @@ class Context:
 
 
 def _dotenv_path() -> Path:
-    local = Path.cwd() / ".env"
-    return local if local.is_file() else PACKAGE_ROOT / ".env"
+    return PACKAGE_ROOT / ".env"
 
 
 def _context(command: str, dry_run: bool, max_usd: float | None) -> Context:
@@ -81,7 +80,10 @@ def _context(command: str, dry_run: bool, max_usd: float | None) -> Context:
 def _embedder(ctx: Context) -> Embedder:
     if ctx.dry_run:
         return FakeEmbedder()
-    return VoyageEmbedder(ctx.secrets.require_voyage(), ctx.settings.models.embed)
+    embed = ctx.settings.embed
+    return VoyageEmbedder(
+        ctx.secrets.require_voyage(), ctx.settings.models.embed, **embed.model_dump()
+    )
 
 
 def _answer_model(ctx: Context) -> AnswerModel:

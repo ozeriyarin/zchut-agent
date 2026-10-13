@@ -38,6 +38,12 @@ class FetchSettings(BaseModel):
     timeout_s: float = Field(gt=0)
 
 
+class EmbedSettings(BaseModel):
+    max_retries: int = Field(default=5, gt=0)
+    max_batch_tokens: int = Field(default=8000, gt=0)
+    min_interval_s: float = Field(default=0.0, ge=0)
+
+
 class PathSettings(BaseModel):
     runs_dir: Path
     raw_dir: Path
@@ -54,6 +60,7 @@ class Settings(BaseModel):
     models: ModelSettings
     answer: AnswerSettings
     fetch: FetchSettings
+    embed: EmbedSettings = EmbedSettings()
     paths: PathSettings
 
 
@@ -128,21 +135,32 @@ def load_prices(root: Path) -> Prices:
         raise ConfigError(f"invalid config/prices.json: {exc}") from exc
 
 
-def load_dotenv(path: Path, env: MutableMapping[str, str]) -> None:
+SECRET_NAMES = frozenset(
+    {"VOYAGE_API_KEY", "ZCHUT_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"}
+)
+
+
+def load_dotenv(path: Path, env: MutableMapping[str, str]) -> int:
     try:
         text = path.read_text(encoding="utf-8-sig")
     except FileNotFoundError:
-        return
+        return 0
     except OSError as exc:
         raise ConfigError(f"cannot read {path}: {exc}") from exc
+    ignored = 0
     for line in text.splitlines():
         key, sep, value = line.strip().partition("=")
-        if not sep or key.startswith("#") or not key.strip():
+        key = key.strip()
+        if not sep or key.startswith("#") or not key:
+            continue
+        if key not in SECRET_NAMES:
+            ignored += 1
             continue
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
             value = value[1:-1]
-        env.setdefault(key.strip(), value)
+        env.setdefault(key, value)
+    return ignored
 
 
 def load_secrets(dotenv: Path | None = None) -> Secrets:

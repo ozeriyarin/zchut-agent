@@ -144,24 +144,25 @@ def test_load_dotenv_parses_pairs_and_keeps_existing_values(tmp_path: Path) -> N
         "VOYAGE_API_KEY=plain",
         'ZCHUT_ANTHROPIC_API_KEY="double quoted"',
         "OPENROUTER_API_KEY='single'",
-        "  SPACED = value with = sign  ",
+        "  ANTHROPIC_API_KEY = value with = sign  ",
         "NO_EQUALS_LINE",
-        "EMPTY=",
-        "ALREADY=from-file",
+        "HTTPS_PROXY=http://evil.example",
+        "SSL_CERT_FILE=/tmp/evil.pem",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
-    env = {"ALREADY": "from-env"}
-    load_dotenv(path, env)
+    env = {"ANTHROPIC_API_KEY": "from-env"}
+    assert load_dotenv(path, env) == 2
     assert env == {
-        "ALREADY": "from-env",
+        "ANTHROPIC_API_KEY": "from-env",
         "VOYAGE_API_KEY": "plain",
         "ZCHUT_ANTHROPIC_API_KEY": "double quoted",
         "OPENROUTER_API_KEY": "single",
-        "SPACED": "value with = sign",
-        "EMPTY": "",
     }
+    spaced: dict[str, str] = {}
+    load_dotenv(path, spaced)
+    assert spaced["ANTHROPIC_API_KEY"] == "value with = sign"
     missing: dict[str, str] = {}
-    load_dotenv(tmp_path / "absent.env", missing)
+    assert load_dotenv(tmp_path / "absent.env", missing) == 0
     assert missing == {}
 
 
@@ -175,14 +176,13 @@ def test_load_secrets_reads_the_dotenv_file(
     assert os.environ["VOYAGE_API_KEY"] == KEY
 
 
-def test_dotenv_path_prefers_cwd_then_package_root(
+def test_dotenv_path_is_the_package_root_never_cwd(
     cli_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     package = cli_root / "package"
     monkeypatch.setattr(cli, "PACKAGE_ROOT", package)
-    assert cli._dotenv_path() == package / ".env"
     (cli_root / ".env").write_text("", encoding="utf-8")
-    assert cli._dotenv_path() == cli_root / ".env"
+    assert cli._dotenv_path() == package / ".env"
 
 
 def test_unknown_model_price_is_an_error() -> None:

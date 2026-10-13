@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import shutil
+import urllib.request
+import urllib.response
 from collections.abc import Mapping
 from datetime import date
+from email.message import Message
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
@@ -17,7 +21,7 @@ from zchut.cli import app
 from zchut.config import Settings
 from zchut.sources.chunk import PATH_SEP, chunk_page, split_text
 from zchut.sources.fetch import FetchError, FetcherRouter, FixtureFetcher, HttpxFetcher
-from zchut.sources.mediawiki import MediaWikiFetcher
+from zchut.sources.mediawiki import MediaWikiFetcher, urllib_opener
 from zchut.sources.parse import ParseError, parse_last_updated, parse_page
 from zchut.types import Chunk, FetchedPage, Page, Section
 
@@ -372,3 +376,58 @@ def test_fetcher_router_picks_mediawiki_for_kolzchut_and_httpx_for_gov_il(
     assert router.for_url("https://kolzchut.org.il/he/x") is wiki
     assert router.for_url(TAX) is web
     assert router.for_url("https://notkolzchut.org.il/he/x") is web
+
+
+def _serve_https(monkeypatch: pytest.MonkeyPatch, routes: dict[str, tuple[int, str]]) -> list[str]:
+    seen: list[str] = []
+
+    def https_open(
+        self: urllib.request.HTTPSHandler, req: urllib.request.Request
+    ) -> urllib.response.addinfourl:
+        seen.append(req.full_url)
+        code, target = routes[req.full_url]
+        headers = Message()
+        if code != 200:
+            headers["Location"] = target
+        body = target.encode() if code == 200 else b""
+        response = urllib.response.addinfourl(io.BytesIO(body), headers, req.full_url, code)
+        response.msg = "stub"
+        return response
+
+    monkeypatch.setattr(urllib.request.HTTPSHandler, "https_open", https_open)
+    return seen
+
+
+def test_urllib_opener_follows_same_host_redirect(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _serve_https(
+        monkeypatch,
+        {AVTALA: (302, "/he/b"), "https://www.kolzchut.org.il/he/b": (200, "ok")},
+    )
+    assert urllib_opener(1.0)(AVTALA, {"User-Agent": UA}) == b"ok"
+    assert seen == [AVTALA, "https://www.kolzchut.org.il/he/b"]
+
+
+@pytest.mark.parametrize("target", ["https://evil.example/he/b", "http://www.kolzchut.org.il/he/b"])
+def test_urllib_opener_refuses_cross_host_redirect(
+    monkeypatch: pytest.MonkeyPatch, target: str
+) -> None:
+    seen = _serve_https(monkeypatch, {AVTALA: (302, target), target: (200, "evil")})
+    with pytest.raises(FetchError, match="redirect .* refused"):
+        urllib_opener(1.0)(AVTALA, {"User-Agent": UA})
+    assert seen == [AVTALA]
+
+
+def test_urllib_opener_caps_same_host_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
+    hop = "https://www.kolzchut.org.il/he/hop{}"
+    routes = {hop.format(i): (302, hop.format(i + 1)) for i in range(5)}
+    seen = _serve_https(monkeypatch, routes)
+    with pytest.raises(FetchError, match="failed"):
+        urllib_opener(1.0)(hop.format(0), {"User-Agent": UA})
+    assert len(seen) == 4
+
+
+def test_urllib_opener_refuses_non_https_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _serve_https(monkeypatch, {})
+    with pytest.raises(FetchError, match="non-https"):
+        urllib_opener(1.0)("http://www.kolzchut.org.il/he/a", {"User-Agent": UA})
+    assert seen == []

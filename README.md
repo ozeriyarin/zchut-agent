@@ -18,7 +18,10 @@ test whose name quotes it, and `tests/test_spec_coverage.py` fails when one is m
 - Python 3.11, Typer CLI, ruff + mypy strict, pytest (offline only).
 - LlamaIndex for ingestion and retrieval; Chroma as the local vector store (v1), Qdrant Cloud free
   tier later (v3).
-- Voyage AI `voyage-3.5-lite` embeddings.
+- Voyage AI `voyage-3.5-lite` embeddings. Rate limits: Voyage's free tier (no payment method)
+  allows about 3 requests and 10,000 tokens per minute, so the embedder batches chunks under
+  `embed.max_batch_tokens`, paces requests `embed.min_interval_s` (20 s) apart and backs off on
+  429/5xx (honouring `Retry-After`); a six-page ingest takes about two minutes.
 - Anthropic Haiku by default (Sonnet behind a flag); OpenRouter for open-weights models (Qwen) as
   the cheap tier (v2); LangGraph for the conversation graph (v2).
 - Sources: kolzchut.org.il (Creative Commons BY-SA 3.0) and gov.il, fetched under robots.txt with

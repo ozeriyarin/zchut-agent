@@ -17,6 +17,7 @@
     "min_interval_s": 1.0,
     "timeout_s": 20
   },
+  "embed": {"max_retries": 5, "max_batch_tokens": 8000, "min_interval_s": 20},
   "paths": {
     "runs_dir": "runs",
     "raw_dir": "data/raw",
