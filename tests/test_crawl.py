@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 import math
 import shutil
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote_plus, urlsplit
 
 import pytest
 from typer.testing import CliRunner
@@ -50,19 +50,25 @@ class FakeApi:
     def __init__(self, revs: dict[str, int]) -> None:
         self.revs = revs
         self.queries: list[dict[str, list[str]]] = []
+        self.posts: list[Mapping[str, str]] = []
 
-    def __call__(self, url: str) -> str:
+    def api_get(self, url: str) -> str:
         assert url.startswith(API + "?")
         query = parse_qs(urlsplit(url).query)
         self.queries.append(query)
-        if query.get("list") == ["allpages"]:
-            name = "allpages-2.json" if "apcontinue" in query else "allpages-1.json"
-            return (MW / name).read_text(encoding="utf-8")
+        assert query["list"] == ["allpages"]
+        name = "allpages-2.json" if "apcontinue" in query else "allpages-1.json"
+        return (MW / name).read_text(encoding="utf-8")
+
+    def api_post(self, url: str, params: Mapping[str, str]) -> str:
+        assert url == API
+        assert params["action"] == "query" and params["prop"] == "revisions"
+        self.posts.append(params)
         pages = [
             {"title": t, "revisions": [{"revid": self.revs[t], "timestamp": STAMP}]}
             if t in self.revs
             else {"title": t, "missing": True}
-            for t in query["titles"][0].split("|")
+            for t in params["titles"].split("|")
         ]
         return json.dumps({"batchcomplete": True, "query": {"pages": pages}})
 
@@ -112,7 +118,8 @@ class SpyEmbedder(FakeEmbedder):
 class FakeWiki(FakeArticles):
     def __init__(self, failing: Sequence[str] = ()) -> None:
         super().__init__(failing)
-        self.api_get = FakeApi(REVS)
+        api = FakeApi(REVS)
+        self.api_get, self.api_post = api.api_get, api.api_post
 
 
 class RecordingStore(InMemoryVectorStore):
@@ -176,7 +183,7 @@ def planned(titles: Sequence[str]) -> CrawlPlan:
 def test_criterion_1_list_articles_pages_and_filters() -> None:
     """criterion 1: "`list_articles` pages through `allpages` with `apcontinue` (two-page fixture), keeps only namespace-0 non-redirect titles, drops configured skip prefixes, and builds canonical unencoded URLs." """
     api = FakeApi(REVS)
-    articles = list_articles(api, API, SKIP)
+    articles = list_articles(api.api_get, API, SKIP)
     assert [a.title for a in articles] == list(REVS)
     assert articles[0].url == "https://www.kolzchut.org.il/he/דמי_אבטלה"
     assert articles[-1].url == "https://www.kolzchut.org.il/he/קצבת_זיקנה_(קצבת_אזרח_ותיק)"
@@ -192,11 +199,21 @@ def test_criterion_2_latest_revisions_in_batches_of_50() -> None:
     """criterion 2: "`latest_revisions` batches 50 titles per request (fixture of 120 titles → 3 requests) and returns revid and timestamp per title." """
     titles = [f"ערך {i}" for i in range(120)]
     api = FakeApi({t: 1000 + i for i, t in enumerate(titles) if i != 7})
-    revisions = latest_revisions(api, API, titles)
-    assert [len(q["titles"][0].split("|")) for q in api.queries] == [50, 50, 20]
-    assert all(q["rvprop"] == ["ids|timestamp"] for q in api.queries)
+    revisions = latest_revisions(api.api_post, API, titles)
+    assert api.queries == []
+    assert [len(q["titles"].split("|")) for q in api.posts] == [50, 50, 20]
+    assert all(q["rvprop"] == "ids|timestamp" for q in api.posts)
     assert len(revisions) == 119 and "ערך 7" not in revisions
     assert revisions["ערך 119"] == Revision(1119, datetime.fromisoformat(STAMP))
+
+
+def test_latest_revisions_splits_batches_by_encoded_size() -> None:
+    titles = [f"{'א' * 99} {i}" for i in range(10)]
+    api = FakeApi({t: i for i, t in enumerate(titles)})
+    revisions = latest_revisions(api.api_post, API, titles, max_chars=3000)
+    assert [len(q["titles"].split("|")) for q in api.posts] == [5, 5]
+    assert all(len(quote_plus(q["titles"])) <= 3000 for q in api.posts)
+    assert len(revisions) == 10
 
 
 def test_criterion_3_crawl_plan_classifies_and_estimates(cli_root: Path) -> None:

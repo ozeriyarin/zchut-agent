@@ -313,11 +313,21 @@ UA = "zchut-agent/test"
 
 
 def _wiki_fetcher(
-    tmp_path: Path, robots: bytes, seen: list[str], sleeps: list[float]
+    tmp_path: Path,
+    robots: bytes,
+    seen: list[str],
+    sleeps: list[float],
+    posted: list[str] | None = None,
 ) -> MediaWikiFetcher:
-    def opener(url: str, headers: Mapping[str, str]) -> bytes:
-        assert headers == {"User-Agent": UA}
+    posted = [] if posted is None else posted
+
+    def opener(url: str, headers: Mapping[str, str], data: bytes | None = None) -> bytes:
+        assert headers["User-Agent"] == UA
         seen.append(url)
+        if data is not None:
+            assert headers["Content-Type"] == "application/x-www-form-urlencoded"
+            posted.append(data.decode("utf-8"))
+            return (MW_FIXTURES / "revisions.json").read_bytes()
         parts = urlsplit(url)
         if parts.path == "/robots.txt":
             return robots
@@ -368,6 +378,27 @@ def test_mediawiki_fetch_article_with_known_revision_makes_one_api_request(
     assert fetched.last_updated == date(2026, 9, 30)
     assert [parse_qs(urlsplit(u).query)["action"] for u in seen[1:]] == [["parse"]]
     assert sleeps == [5.0]
+
+
+def test_mediawiki_api_post_sends_titles_in_a_form_body(tmp_path: Path) -> None:
+    seen: list[str] = []
+    sleeps: list[float] = []
+    posted: list[str] = []
+    fetcher = _wiki_fetcher(tmp_path, b"User-agent: *\nCrawl-delay: 5\n", seen, sleeps, posted)
+    api = "https://www.kolzchut.org.il/api.php"
+    text = fetcher.api_post(api, {"action": "query", "titles": "דמי אבטלה|פנסיה"})
+    assert text == (MW_FIXTURES / "revisions.json").read_text(encoding="utf-8")
+    assert seen == ["https://www.kolzchut.org.il/robots.txt", api]
+    assert parse_qs(posted[0]) == {"action": ["query"], "titles": ["דמי אבטלה|פנסיה"]}
+    assert sleeps == [5.0] and len(list((tmp_path / "raw").iterdir())) == 1
+
+
+def test_mediawiki_api_post_honours_robots_disallow(tmp_path: Path) -> None:
+    seen: list[str] = []
+    fetcher = _wiki_fetcher(tmp_path, b"User-agent: *\nDisallow: /api.php\n", seen, [])
+    with pytest.raises(FetchError, match="robots"):
+        fetcher.api_post("https://www.kolzchut.org.il/api.php", {"action": "query"})
+    assert [urlsplit(u).path for u in seen] == ["/robots.txt"]
 
 
 def test_mediawiki_fetcher_honours_robots_disallow(tmp_path: Path) -> None:
@@ -426,6 +457,15 @@ def test_urllib_opener_refuses_cross_host_redirect(
     seen = _serve_https(monkeypatch, {AVTALA: (302, target), target: (200, "evil")})
     with pytest.raises(FetchError, match="redirect .* refused"):
         urllib_opener(1.0)(AVTALA, {"User-Agent": UA})
+    assert seen == [AVTALA]
+
+
+@pytest.mark.parametrize("code", [302, 307])
+def test_urllib_opener_refuses_redirect_of_post(monkeypatch: pytest.MonkeyPatch, code: int) -> None:
+    target = "https://www.kolzchut.org.il/he/b"
+    seen = _serve_https(monkeypatch, {AVTALA: (code, target), target: (200, "ok")})
+    with pytest.raises(FetchError, match="redirect of POST .* refused"):
+        urllib_opener(1.0)(AVTALA, {"User-Agent": UA}, b"titles=a")
     assert seen == [AVTALA]
 
 

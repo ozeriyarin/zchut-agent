@@ -14,7 +14,7 @@ from zchut.index.ingest import embed_text
 from zchut.index.manifest import Manifest, ManifestEntry, save_manifest
 from zchut.index.store import VectorStore
 from zchut.run.cost_guard import BudgetExceeded, CostGuard
-from zchut.sources.catalog import ApiGet, Article, Revision, latest_revisions, list_articles
+from zchut.sources.catalog import Article, CatalogApi, Revision, latest_revisions, list_articles
 from zchut.sources.chunk import chunk_page
 from zchut.sources.fetch import FetchError
 from zchut.sources.parse import ParseError, parse_page
@@ -91,10 +91,12 @@ def diff(
     return CrawlPlan(tuple(todo), new, len(todo) - new, unchanged, gone)
 
 
-def make_plan(get: ApiGet, crawl: CrawlSettings, manifest: Manifest) -> CrawlPlan:
-    articles = list_articles(get, crawl.api_url, crawl.skip_prefixes, crawl.list_batch)
+def make_plan(api: CatalogApi, crawl: CrawlSettings, manifest: Manifest) -> CrawlPlan:
+    articles = list_articles(api.api_get, crawl.api_url, crawl.skip_prefixes, crawl.list_batch)
     titles = [a.title for a in articles]
-    revisions = latest_revisions(get, crawl.api_url, titles, crawl.revisions_batch)
+    revisions = latest_revisions(
+        api.api_post, crawl.api_url, titles, crawl.revisions_batch, crawl.max_query_chars
+    )
     return diff(articles, revisions, manifest)
 
 

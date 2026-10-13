@@ -52,6 +52,7 @@ class CrawlSettings(BaseModel):
     skip_prefixes: list[str] = []
     list_batch: int = Field(default=500, gt=0, le=500)
     revisions_batch: int = Field(default=50, gt=0, le=50)
+    max_query_chars: int = Field(default=3000, gt=0)
     fetch_delay_s: float = Field(gt=0)
     tokens_per_article: int = Field(gt=0)
 

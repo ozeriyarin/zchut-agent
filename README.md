@@ -83,9 +83,9 @@ current: a later run fetches and embeds only articles whose revision changed.
 
 - `zchut crawl plan` lists every namespace-0, non-redirect article through the MediaWiki
   `allpages` API (500 titles per request, titles starting with a `crawl.skip_prefixes` entry
-  dropped), reads the latest revision of each in batches of 50, and diffs that against
-  `data/manifest.json`: new, changed (revision differs, or the last attempt failed), unchanged,
-  and gone (in the manifest, no longer listed). It prints the counts and a time estimate. Listing
+  dropped), reads the latest revision of each (revisions are fetched with POST, 50 titles per
+  request), and diffs that against `data/manifest.json`: new, changed (revision differs, or the
+  last attempt failed), unchanged, and gone (in the manifest, no longer listed). It prints the counts and a time estimate. Listing
   costs about 165 requests, about 14 minutes at the 5 s crawl delay; it makes no AI call.
 - `zchut crawl run [--limit N] [--max-minutes M] [--max-usd X]` plans the same way, removes gone
   articles from the store and the manifest, then processes new and changed articles in title order:

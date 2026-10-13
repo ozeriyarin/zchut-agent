@@ -379,9 +379,7 @@ def crawl_plan() -> None:
     """Diff every article's revision against the manifest; print the counts and the time."""
     with _config_errors():
         settings = load_settings(Path.cwd())
-        plan = make_plan(
-            _wiki(settings).api_get, settings.crawl, load_manifest(settings.paths.manifest)
-        )
+        plan = make_plan(_wiki(settings), settings.crawl, load_manifest(settings.paths.manifest))
     typer.echo(format_plan(plan, estimate(len(plan.todo), settings.crawl, settings.embed)))
 
 
@@ -410,7 +408,7 @@ def crawl_run(
             ctx.settings.chunk,
             ctx.settings.embed.max_batch_tokens,
         )
-        plan = make_plan(wiki.api_get, ctx.settings.crawl, manifest)
+        plan = make_plan(wiki, ctx.settings.crawl, manifest)
     est = estimate(len(plan.todo), ctx.settings.crawl, ctx.settings.embed)
     record = CrawlRecord(
         planned=len(plan.todo),

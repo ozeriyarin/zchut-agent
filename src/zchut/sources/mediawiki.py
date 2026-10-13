@@ -8,7 +8,7 @@ from datetime import date, datetime
 from html import escape
 from http.client import HTTPMessage
 from pathlib import Path
-from typing import IO
+from typing import IO, Protocol
 from urllib.parse import urlencode, urlsplit
 
 from pydantic import BaseModel, ValidationError
@@ -22,8 +22,14 @@ from zchut.sources.fetch import (
 )
 from zchut.types import FetchedPage
 
-Opener = Callable[[str, Mapping[str, str]], bytes]
 PAGE_PREFIX = "/he/"
+FORM = "application/x-www-form-urlencoded"
+
+
+class Opener(Protocol):
+    def __call__(
+        self, url: str, headers: Mapping[str, str], data: bytes | None = None
+    ) -> bytes: ...
 
 
 class _Parsed(BaseModel):
@@ -64,6 +70,8 @@ class SameHostRedirectHandler(urllib.request.HTTPRedirectHandler):
         newurl: str,
     ) -> urllib.request.Request | None:
         target = urlsplit(newurl)
+        if req.data is not None:
+            raise FetchError(f"redirect of POST to {target.netloc} refused")
         if target.scheme != "https" or target.netloc != urlsplit(req.full_url).netloc:
             raise FetchError(f"cross-host redirect to {target.netloc} refused")
         return super().redirect_request(req, fp, code, msg, headers, newurl)
@@ -72,10 +80,10 @@ class SameHostRedirectHandler(urllib.request.HTTPRedirectHandler):
 def urllib_opener(timeout_s: float) -> Opener:
     opener = urllib.request.build_opener(SameHostRedirectHandler())
 
-    def open_url(url: str, headers: Mapping[str, str]) -> bytes:
+    def open_url(url: str, headers: Mapping[str, str], data: bytes | None = None) -> bytes:
         if urlsplit(url).scheme != "https":
             raise FetchError(f"refusing non-https url {url}")
-        request = urllib.request.Request(url, headers=dict(headers))
+        request = urllib.request.Request(url, data=data, headers=dict(headers))
         try:
             with opener.open(request, timeout=timeout_s) as response:
                 body: bytes = response.read()
@@ -106,6 +114,13 @@ class MediaWikiFetcher:
     def api_get(self, url: str) -> str:
         self._polite.check(url, self._robots_text)
         return self._get(url)
+
+    def api_post(self, url: str, params: Mapping[str, str]) -> str:
+        self._polite.check(url, self._robots_text)
+        body = urlencode(params)
+        text = self._get(url, body.encode("utf-8"))
+        cache_raw(self._raw_dir, f"{url}?{body}", ".post.json", text)
+        return text
 
     def fetch_article(self, url: str, last_updated: date | None) -> FetchedPage:
         url = canonical_url(url)
@@ -170,7 +185,10 @@ class MediaWikiFetcher:
         except FetchError:
             return None
 
-    def _get(self, url: str) -> str:
+    def _get(self, url: str, data: bytes | None = None) -> str:
         self._polite.wait(urlsplit(url).netloc)
-        body = self._open(url, {"User-Agent": self._polite.user_agent})
+        headers = {"User-Agent": self._polite.user_agent}
+        if data is not None:
+            headers["Content-Type"] = FORM
+        body = self._open(url, headers, data)
         return body.decode("utf-8", errors="replace")
