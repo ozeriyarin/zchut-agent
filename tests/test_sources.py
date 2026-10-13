@@ -5,6 +5,7 @@ import json
 import shutil
 from datetime import date
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 import pytest
@@ -76,7 +77,7 @@ def test_criterion_3_chunk_metadata(settings: Settings) -> None:
     chunks = fixture_chunks(settings)
     expected = {
         AVTALA: ("CC-BY-SA-3.0", "2026-08-12", "דמי אבטלה"),
-        PENSIA: ("CC-BY-SA-3.0", "2026-06-03", "פנסיית חובה"),
+        PENSIA: ("CC-BY-SA-3.0", "2026-06-03", "פנסיה וחיסכון ארוך טווח לשכירים"),
         TAX: ("gov.il", None, "הגשת בקשה להחזר מס הכנסה לשכירים"),
     }
     for url, (license_id, updated, title) in expected.items():
@@ -142,6 +143,9 @@ def test_chunk_ids_are_unique_and_stable(settings: Settings) -> None:
     [
         ("עודכן לאחרונה: 12.8.2026", date(2026, 8, 12)),
         ("עדכון אחרון 1/2/2025", date(2025, 2, 1)),
+        ("עודכן לאחרונה ב11:38, 13 באוקטובר 2026.", date(2026, 10, 13)),
+        ("עודכן לאחרונה ב09:05, 3 במרץ 2025.", date(2025, 3, 3)),
+        ("עודכן לאחרונה ב09:05, 31 בפברואר 2025.", None),
         ("עודכן לאחרונה: 31.2.2026", None),
         ("אין תאריך", None),
     ],
@@ -172,6 +176,55 @@ def test_parse_skips_noise_and_nested_blocks() -> None:
     parsed = parse_page(FetchedPage(url=TAX, html=html, fetched_at=date(2026, 10, 13)))
     assert parsed.title == "כותרת"
     assert parsed.sections == (Section(("א",), "פריט"),)
+
+
+def test_parse_mediawiki_title_skips_article_type() -> None:
+    html = (
+        '<h1><span class="mw-page-title-main">קצבת זיקנה</span> <span>(הליך)</span></h1>'
+        '<p>מחוץ לתוכן</p><div id="mw-content-text"><h2>א</h2><p>תוכן</p></div>'
+    )
+    parsed = parse_page(FetchedPage(url=AVTALA, html=html, fetched_at=date(2026, 10, 13)))
+    assert parsed.title == "קצבת זיקנה"
+    assert parsed.sections == (Section(("א",), "תוכן"),)
+
+
+def test_httpx_fetcher_honours_crawl_delay(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nCrawl-delay: 5\n")
+        return httpx.Response(200, text="<h1>כותרת</h1><p>טקסט</p>")
+
+    sleeps: list[float] = []
+    fetcher = HttpxFetcher(
+        httpx.Client(transport=httpx.MockTransport(handler)),
+        tmp_path / "raw",
+        "zchut-agent/test",
+        clock=lambda: 0.0,
+        sleep=sleeps.append,
+    )
+    fetcher.fetch_page(AVTALA)
+    assert sleeps == [5.0]
+
+
+def test_httpx_fetcher_encodes_request_and_keeps_canonical_url(tmp_path: Path) -> None:
+    url = "https://www.kolzchut.org.il/he/קצבת_זיקנה_(קצבת_אזרח_ותיק)"
+    encoded = "https://www.kolzchut.org.il" + quote("/he/קצבת_זיקנה_(קצבת_אזרח_ותיק)", safe="/_()")
+    sent: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(request.url.raw_path.decode("ascii"))
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        if request.url.path == "/he/old":
+            return httpx.Response(301, headers={"Location": encoded})
+        return httpx.Response(200, text="<h1>כותרת</h1><p>טקסט</p>")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    fetcher = HttpxFetcher(client, tmp_path / "raw", "zchut-agent/test", 0.0)
+    sources = (url, encoded, "https://www.kolzchut.org.il/he/old")
+    assert [fetcher.fetch_page(u).url for u in sources] == [url] * 3
+    assert sent[1] == encoded.removeprefix("https://www.kolzchut.org.il")
+    assert "%D7%A7" in sent[1] and sent[1].endswith("%D7%99%D7%A7)")
 
 
 def test_httpx_fetcher_robots_rate_limit_and_cache(tmp_path: Path) -> None:

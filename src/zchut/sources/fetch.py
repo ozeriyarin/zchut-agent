@@ -7,7 +7,7 @@ from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 from typing import Protocol
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 from urllib.robotparser import RobotFileParser
 
 import httpx
@@ -20,6 +20,10 @@ MAX_REDIRECTS = 3
 
 class FetchError(Exception):
     pass
+
+
+def canonical_url(url: str) -> str:
+    return unquote(url)
 
 
 class Fetcher(Protocol):
@@ -38,12 +42,13 @@ class FixtureFetcher:
         self._meta: dict[str, FixtureMeta] = {}
         for path in sorted(directory.glob("*.meta.json")):
             meta = FixtureMeta.model_validate(json.loads(path.read_text(encoding="utf-8")))
-            self._meta[meta.url] = meta
+            self._meta[canonical_url(meta.url)] = meta
 
     def urls(self) -> list[str]:
         return list(self._meta)
 
     def fetch_page(self, url: str) -> FetchedPage:
+        url = canonical_url(url)
         meta = self._meta.get(url)
         if meta is None:
             raise FetchError(f"no fixture for {url}")
@@ -74,6 +79,7 @@ class HttpxFetcher:
         self._last_request: dict[str, float] = {}
 
     def fetch_page(self, url: str) -> FetchedPage:
+        url = canonical_url(url)
         host = urlsplit(url).netloc
         for _ in range(MAX_REDIRECTS + 1):
             if not self._robots_for(url).can_fetch(self._user_agent, url):
@@ -81,7 +87,7 @@ class HttpxFetcher:
             response = self._get(url, follow_redirects=False)
             if not response.is_redirect:
                 break
-            url = str(response.url.join(response.headers["Location"]))
+            url = canonical_url(str(response.url.join(response.headers["Location"])))
             if urlsplit(url).netloc != host:
                 raise FetchError(f"cross-host redirect to {urlsplit(url).netloc} refused")
         else:
@@ -105,8 +111,11 @@ class HttpxFetcher:
     def _get(self, url: str, follow_redirects: bool = True) -> httpx.Response:
         host = urlsplit(url).netloc
         last = self._last_request.get(host)
+        robots = self._robots.get(host)
+        delay = robots.crawl_delay(self._user_agent) if robots is not None else None
+        interval = max(self._min_interval_s, float(delay or 0))
         if last is not None:
-            wait = self._min_interval_s - (self._clock() - last)
+            wait = interval - (self._clock() - last)
             if wait > 0:
                 self._sleep(wait)
         self._last_request[host] = self._clock()

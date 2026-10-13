@@ -83,7 +83,7 @@
     "id": "q11",
     "question": "כמה המעסיק חייב להפריש לפנסיה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/פנסיית_חובה"
+      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים"
     ],
     "expect_refusal": false
   },
@@ -91,7 +91,7 @@
     "id": "q12",
     "question": "מאיזה גיל עובד זכאי להפרשות לפנסיה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/פנסיית_חובה"
+      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים"
     ],
     "expect_refusal": false
   },
@@ -99,7 +99,7 @@
     "id": "q13",
     "question": "אחרי כמה חודשי עבודה מתחילות הפרשות לפנסיה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/פנסיית_חובה"
+      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים"
     ],
     "expect_refusal": false
   },
@@ -107,7 +107,7 @@
     "id": "q14",
     "question": "מה שיעור ההפרשה של העובד לפנסיית חובה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/פנסיית_חובה"
+      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים"
     ],
     "expect_refusal": false
   },
@@ -115,7 +115,7 @@
     "id": "q15",
     "question": "מה קורה אם לא בחרתי קרן פנסיה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/פנסיית_חובה"
+      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים"
     ],
     "expect_refusal": false
   },
@@ -123,7 +123,7 @@
     "id": "q16",
     "question": "המעסיק לא מפריש לי לפנסיה, מה עושים?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/פנסיית_חובה"
+      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים"
     ],
     "expect_refusal": false
   },
@@ -131,7 +131,7 @@
     "id": "q17",
     "question": "איך בודקים אם המעסיק הפריש כספים לפנסיה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/פנסיית_חובה"
+      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים"
     ],
     "expect_refusal": false
   },
@@ -139,7 +139,8 @@
     "id": "q18",
     "question": "איך מקבלים החזר מס הכנסה לשכירים?",
     "expected_urls": [
-      "https://www.gov.il/he/service/income-tax-refund-for-employees"
+      "https://www.gov.il/he/service/income-tax-refund-for-employees",
+      "https://www.kolzchut.org.il/he/החזר_מס_הכנסה"
     ],
     "expect_refusal": false
   },
@@ -147,7 +148,8 @@
     "id": "q19",
     "question": "על כמה שנים אחורה אפשר לבקש החזר מס?",
     "expected_urls": [
-      "https://www.gov.il/he/service/income-tax-refund-for-employees"
+      "https://www.gov.il/he/service/income-tax-refund-for-employees",
+      "https://www.kolzchut.org.il/he/החזר_מס_הכנסה"
     ],
     "expect_refusal": false
   },
@@ -155,7 +157,8 @@
     "id": "q20",
     "question": "אילו מסמכים צריך להכין לבקשת החזר מס?",
     "expected_urls": [
-      "https://www.gov.il/he/service/income-tax-refund-for-employees"
+      "https://www.gov.il/he/service/income-tax-refund-for-employees",
+      "https://www.kolzchut.org.il/he/החזר_מס_הכנסה"
     ],
     "expect_refusal": false
   },
@@ -163,7 +166,8 @@
     "id": "q21",
     "question": "החלפתי מקום עבודה באמצע השנה, מגיע לי החזר מס?",
     "expected_urls": [
-      "https://www.gov.il/he/service/income-tax-refund-for-employees"
+      "https://www.gov.il/he/service/income-tax-refund-for-employees",
+      "https://www.kolzchut.org.il/he/החזר_מס_הכנסה"
     ],
     "expect_refusal": false
   },
@@ -171,7 +175,8 @@
     "id": "q22",
     "question": "איך מגישים בקשה להחזר מס באופן מקוון?",
     "expected_urls": [
-      "https://www.gov.il/he/service/income-tax-refund-for-employees"
+      "https://www.gov.il/he/service/income-tax-refund-for-employees",
+      "https://www.kolzchut.org.il/he/החזר_מס_הכנסה"
     ],
     "expect_refusal": false
   },
@@ -179,7 +184,8 @@
     "id": "q23",
     "question": "תוך כמה זמן מתקבל החזר המס?",
     "expected_urls": [
-      "https://www.gov.il/he/service/income-tax-refund-for-employees"
+      "https://www.gov.il/he/service/income-tax-refund-for-employees",
+      "https://www.kolzchut.org.il/he/החזר_מס_הכנסה"
     ],
     "expect_refusal": false
   },
@@ -187,7 +193,8 @@
     "id": "q24",
     "question": "מה זה טופס 106 ולמה צריך אותו להחזר מס?",
     "expected_urls": [
-      "https://www.gov.il/he/service/income-tax-refund-for-employees"
+      "https://www.gov.il/he/service/income-tax-refund-for-employees",
+      "https://www.kolzchut.org.il/he/החזר_מס_הכנסה"
     ],
     "expect_refusal": false
   },

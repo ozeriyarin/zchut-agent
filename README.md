@@ -24,6 +24,8 @@ test whose name quotes it, and `tests/test_spec_coverage.py` fails when one is m
 - Sources: kolzchut.org.il (Creative Commons BY-SA 3.0) and gov.il, fetched under robots.txt with
   a rate limit. Each chunk stores its URL, title, section path, fetch date and license.
   Redirects are followed on the same host only (at most 3); cross-host redirects are refused.
+  v1 ingests כל זכות only, because gov.il service pages are client-rendered; the fetcher honours
+  the robots.txt `Crawl-delay` (5 s on kolzchut) on top of its 1 s per-host minimum.
 
 ## Running it
 

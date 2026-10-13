@@ -19,7 +19,7 @@ from zchut.sources.fetch import FixtureFetcher
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tests" / "fixtures" / "pages"
 AVTALA = "https://www.kolzchut.org.il/he/דמי_אבטלה"
-PENSIA = "https://www.kolzchut.org.il/he/פנסיית_חובה"
+PENSIA = "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים"
 TAX = "https://www.gov.il/he/service/income-tax-refund-for-employees"
 
 

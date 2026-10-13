@@ -6,25 +6,27 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from conftest import AVTALA, ROOT, TAX, make_deps, make_guard
+from conftest import AVTALA, PENSIA, ROOT, TAX, make_deps, make_guard
 from zchut.answer.model import FakeAnswerModel
 from zchut.cli import app
-from zchut.config import ConfigError, Prices
+from zchut.config import ConfigError, Prices, load_settings
 from zchut.eval.metrics import citation_precision, hit_at_k, rate
 from zchut.eval.questions import EvalQuestion, load_questions
 from zchut.eval.run_eval import run_eval
 from zchut.index.store import InMemoryVectorStore
 
 runner = CliRunner()
-FIXTURE_URLS = {AVTALA, TAX, "https://www.kolzchut.org.il/he/פנסיית_חובה"}
+FIXTURE_URLS = {AVTALA, TAX, PENSIA}
 
 
 def test_criterion_7_eval_set_and_dry_run_report(cli_root: Path) -> None:
     """criterion 7: "`eval/questions.json` holds exactly 30 entries that validate against the schema (`id`, `question`, at least one `expected_urls` entry or `expect_refusal: true`), and `zchut eval --dry-run` over the fixture index reports retrieval hit@3, citation precision and refusal rate and writes an eval report under `runs/`." """
     questions = load_questions(ROOT / "eval" / "questions.json")
     assert len(questions) == 30
+    known = FIXTURE_URLS | set(load_settings(ROOT).sources)
     for q in questions:
-        assert q.expect_refusal or (q.expected_urls and set(q.expected_urls) <= FIXTURE_URLS)
+        urls = set(q.expected_urls)
+        assert q.expect_refusal or (urls & FIXTURE_URLS and urls <= known)
     with pytest.raises(ValueError, match="expected_urls or expect_refusal"):
         EvalQuestion(id="x", question="שאלה?")
 
