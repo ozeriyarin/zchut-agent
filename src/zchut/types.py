@@ -114,6 +114,23 @@ class GraphRecord(BaseModel):
     clarified: bool
 
 
+class CrawlRecord(BaseModel):
+    planned: int
+    fetched: int = 0
+    embedded: int = 0
+    errors: int = 0
+    skipped: int
+    deleted: int = 0
+    remaining: int = 0
+    store_chunks: int = 0
+    elapsed_s: float = 0.0
+    embed_tokens: int = 0
+    cost_usd: float = 0.0
+    stopped_by: str = "done"
+    estimate_fetch_s: float
+    estimate_embed_s: float
+
+
 class RunRecord(BaseModel):
     command: str
     started_at: str
@@ -131,3 +148,4 @@ class RunRecord(BaseModel):
     calls: list[CallRecord] = []
     total_cost_usd: float = 0.0
     graph: GraphRecord | None = None
+    crawl: CrawlRecord | None = None

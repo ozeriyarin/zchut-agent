@@ -101,6 +101,13 @@ class MediaWikiFetcher:
         self._polite = Politeness(user_agent, min_interval_s, clock, sleep)
 
     def fetch_page(self, url: str) -> FetchedPage:
+        return self.fetch_article(url, None)
+
+    def api_get(self, url: str) -> str:
+        self._polite.check(url, self._robots_text)
+        return self._get(url)
+
+    def fetch_article(self, url: str, last_updated: date | None) -> FetchedPage:
         url = canonical_url(url)
         parts = urlsplit(url)
         if not parts.path.startswith(PAGE_PREFIX):
@@ -117,6 +124,27 @@ class MediaWikiFetcher:
                 "disableeditsection": "1",
             }
         )
+        self._polite.check(url, self._robots_text)
+        parse_raw = self.api_get(parse_url)
+        cache_raw(self._raw_dir, url, ".parse.json", parse_raw)
+        try:
+            parsed = _ParseResponse.model_validate_json(parse_raw).parse
+        except ValidationError as exc:
+            raise FetchError(f"unexpected api response for {url}: {exc}") from exc
+        if last_updated is None:
+            last_updated = self._revision_date(url, api, title)
+        html = (
+            f'<h1><span class="mw-page-title-main">{escape(parsed.title)}</span></h1>'
+            f'<div id="mw-content-text">{parsed.text}</div>'
+        )
+        return FetchedPage(
+            url=url,
+            html=html,
+            fetched_at=date.today(),
+            last_updated=last_updated,
+        )
+
+    def _revision_date(self, url: str, api: str, title: str) -> date | None:
         rev_url = api + urlencode(
             {
                 "action": "query",
@@ -127,27 +155,14 @@ class MediaWikiFetcher:
                 "formatversion": "2",
             }
         )
-        self._polite.check(url, self._robots_text)
-        self._polite.check(parse_url, self._robots_text)
-        parse_raw, rev_raw = self._get(parse_url), self._get(rev_url)
-        cache_raw(self._raw_dir, url, ".parse.json", parse_raw)
+        rev_raw = self._get(rev_url)
         cache_raw(self._raw_dir, url, ".revisions.json", rev_raw)
         try:
-            parsed = _ParseResponse.model_validate_json(parse_raw).parse
             pages = _RevisionResponse.model_validate_json(rev_raw).query.pages
         except ValidationError as exc:
             raise FetchError(f"unexpected api response for {url}: {exc}") from exc
         revisions = pages[0].revisions if pages else []
-        html = (
-            f'<h1><span class="mw-page-title-main">{escape(parsed.title)}</span></h1>'
-            f'<div id="mw-content-text">{parsed.text}</div>'
-        )
-        return FetchedPage(
-            url=url,
-            html=html,
-            fetched_at=date.today(),
-            last_updated=revisions[0].timestamp.date() if revisions else None,
-        )
+        return revisions[0].timestamp.date() if revisions else None
 
     def _robots_text(self, url: str) -> str | None:
         try:

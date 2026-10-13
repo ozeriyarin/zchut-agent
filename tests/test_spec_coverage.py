@@ -21,6 +21,7 @@ TESTS = ROOT / "tests"
 SPEC_ROWS: list[tuple[str, str, int]] = [
     ("2026-10-13-zchut-v1-ingest-ask", "", 10),
     ("2026-10-13-zchut-v2-conversation", "", 8),
+    ("2026-10-13-zchut-v3-full-corpus", "", 8),
 ]
 UNIMPLEMENTED: set[str] = set()
 
@@ -62,3 +63,8 @@ def test_criterion_10_pytest_passes_every_criterion_quoted() -> None:
 def test_criterion_8_v2_pytest_passes_every_criterion_quoted() -> None:
     """criterion 8: "`pytest` passes; every criterion has a test whose name quotes it." """
     assert len(criteria("2026-10-13-zchut-v2-conversation")) == 8
+
+
+def test_criterion_8_v3_pytest_passes_every_criterion_quoted() -> None:
+    """criterion 8: "`pytest` passes; every criterion has a test whose name quotes it." """
+    assert len(criteria("2026-10-13-zchut-v3-full-corpus")) == 8

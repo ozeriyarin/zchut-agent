@@ -23,7 +23,7 @@
     "min_interval_s": 1.0,
     "timeout_s": 20
   },
-  "embed": {"max_retries": 5, "max_batch_tokens": 8000, "min_interval_s": 20},
+  "embed": {"max_retries": 5, "max_batch_tokens": 3000, "min_interval_s": 20},
   "graph": {
     "classify_max_tokens": 200,
     "verify_max_tokens": 400,
@@ -35,12 +35,21 @@
       }
     }
   },
+  "crawl": {
+    "api_url": "https://www.kolzchut.org.il/api.php",
+    "skip_prefixes": ["תבנית:", "קטגוריה:"],
+    "list_batch": 500,
+    "revisions_batch": 50,
+    "fetch_delay_s": 5,
+    "tokens_per_article": 3000
+  },
   "paths": {
     "runs_dir": "runs",
     "raw_dir": "data/raw",
     "chroma_dir": ".chroma",
     "fixtures_dir": "tests/fixtures/pages",
     "questions": "eval/questions.json",
-    "offices": "config/offices.json"
+    "offices": "config/offices.json",
+    "manifest": "data/manifest.json"
   }
 }

@@ -22,6 +22,8 @@ class VectorStore(Protocol):
         self, url: str, chunks: Sequence[Chunk], vectors: Sequence[list[float]]
     ) -> None: ...
 
+    def delete(self, url: str) -> None: ...
+
     def search(self, vector: Sequence[float], k: int) -> list[Hit]: ...
 
     def count(self) -> int: ...
@@ -39,6 +41,9 @@ class InMemoryVectorStore:
 
     def replace(self, url: str, chunks: Sequence[Chunk], vectors: Sequence[list[float]]) -> None:
         self._by_url[url] = list(zip(chunks, vectors, strict=True))
+
+    def delete(self, url: str) -> None:
+        self._by_url.pop(url, None)
 
     def search(self, vector: Sequence[float], k: int) -> list[Hit]:
         hits = [
@@ -89,8 +94,11 @@ class ChromaStore:
         self._store = ChromaVectorStore(chroma_collection=self._collection)
 
     def replace(self, url: str, chunks: Sequence[Chunk], vectors: Sequence[list[float]]) -> None:
-        self._store.delete(ref_doc_id=url)
+        self.delete(url)
         self._store.add([_node(c, v) for c, v in zip(chunks, vectors, strict=True)])
+
+    def delete(self, url: str) -> None:
+        self._store.delete(ref_doc_id=url)
 
     def search(self, vector: Sequence[float], k: int) -> list[Hit]:
         result = self._store.query(

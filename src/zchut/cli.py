@@ -38,21 +38,25 @@ from zchut.graph.verify import (
     JevVerifier,
     Verifier,
 )
+from zchut.index.crawl import CrawlDeps, estimate, format_plan, format_run, make_plan, run_crawl
 from zchut.index.embedder import FAKE_EMBED_MODEL, Embedder, FakeEmbedder, VoyageEmbedder
 from zchut.index.ingest import ingest as ingest_pages
+from zchut.index.manifest import ManifestError, load_manifest
 from zchut.index.store import ChromaStore, InMemoryVectorStore, VectorStore
 from zchut.run.ask import AskDeps
 from zchut.run.converse import run_conversation
 from zchut.run.cost_guard import CostGuard, Outcome, guarded
 from zchut.run.cost_report import format_cost, summarize_runs
 from zchut.run.records import RunRecorder
-from zchut.sources.fetch import Fetcher, FetcherRouter, FixtureFetcher, HttpxFetcher
+from zchut.sources.fetch import Fetcher, FetchError, FetcherRouter, FixtureFetcher, HttpxFetcher
 from zchut.sources.mediawiki import MediaWikiFetcher, urllib_opener
-from zchut.types import IngestReport
+from zchut.types import CrawlRecord, IngestReport
 
 app = typer.Typer(
     add_completion=False, no_args_is_help=True, help="Zchut: Hebrew RAG over public pages."
 )
+crawl_app = typer.Typer(no_args_is_help=True, help="Crawl every כל זכות article incrementally.")
+app.add_typer(crawl_app, name="crawl")
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 
@@ -149,13 +153,17 @@ def _ingest(
     return ingest_pages(urls, fetcher, embedder, store, guard, chunk.max_chars, chunk.min_chars)
 
 
+def _wiki(settings: Settings) -> MediaWikiFetcher:
+    fetch = settings.fetch
+    opener = urllib_opener(fetch.timeout_s)
+    return MediaWikiFetcher(settings.paths.raw_dir, fetch.user_agent, fetch.min_interval_s, opener)
+
+
 def _live_fetcher(settings: Settings) -> FetcherRouter:
     fetch, raw_dir = settings.fetch, settings.paths.raw_dir
     client = httpx.Client(timeout=fetch.timeout_s)
-    opener = urllib_opener(fetch.timeout_s)
-    wiki = MediaWikiFetcher(raw_dir, fetch.user_agent, fetch.min_interval_s, opener)
     web = HttpxFetcher(client, raw_dir, fetch.user_agent, fetch.min_interval_s)
-    return FetcherRouter({"kolzchut.org.il": wiki}, web)
+    return FetcherRouter({"kolzchut.org.il": _wiki(settings)}, web)
 
 
 def _store(ctx: Context, embedder: Embedder) -> VectorStore:
@@ -216,8 +224,11 @@ def _finish(ctx: Context, outcome: Outcome, redact: list[str]) -> Path:
 def _config_errors() -> Iterator[None]:
     try:
         yield
-    except ConfigError as exc:
+    except (ConfigError, ManifestError) as exc:
         typer.echo(f"שגיאת תצורה: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    except FetchError as exc:
+        typer.echo(f"שגיאה: {exc}", err=True)
         raise typer.Exit(1) from exc
 
 
@@ -361,3 +372,58 @@ def cost(
         settings = load_settings(Path.cwd())
     since = datetime.now() - timedelta(days=days)
     typer.echo(format_cost(summarize_runs(settings.paths.runs_dir, since)))
+
+
+@crawl_app.command("plan")
+def crawl_plan() -> None:
+    """Diff every article's revision against the manifest; print the counts and the time."""
+    with _config_errors():
+        settings = load_settings(Path.cwd())
+        plan = make_plan(
+            _wiki(settings).api_get, settings.crawl, load_manifest(settings.paths.manifest)
+        )
+    typer.echo(format_plan(plan, estimate(len(plan.todo), settings.crawl, settings.embed)))
+
+
+@crawl_app.command("run")
+def crawl_run(
+    limit: Annotated[
+        int | None, typer.Option("--limit", min=1, help="Process at most N articles.")
+    ] = None,
+    max_minutes: Annotated[
+        float | None, typer.Option("--max-minutes", min=0, help="Stop between articles after M.")
+    ] = None,
+    max_usd: MaxUsd = None,
+) -> None:
+    """Fetch, embed and store new and changed articles; drop gone ones; resumable."""
+    with _config_errors():
+        ctx = _context("crawl", False, max_usd)
+        paths = ctx.settings.paths
+        manifest = load_manifest(paths.manifest)
+        wiki = _wiki(ctx.settings)
+        deps = CrawlDeps(
+            wiki,
+            _embedder(ctx),
+            ChromaStore(paths.chroma_dir),
+            ctx.guard,
+            paths.manifest,
+            ctx.settings.chunk,
+            ctx.settings.embed.max_batch_tokens,
+        )
+        plan = make_plan(wiki.api_get, ctx.settings.crawl, manifest)
+    est = estimate(len(plan.todo), ctx.settings.crawl, ctx.settings.embed)
+    record = CrawlRecord(
+        planned=len(plan.todo),
+        skipped=plan.unchanged,
+        estimate_fetch_s=est.fetch_s,
+        estimate_embed_s=est.embed_s,
+    )
+    ctx.recorder.record.crawl = record
+
+    def action() -> str:
+        run_crawl(plan, manifest, deps, record, limit, max_minutes)
+        return format_run(record)
+
+    outcome = guarded(ctx.recorder, action)
+    _finish(ctx, outcome, [])
+    raise typer.Exit(outcome.exit_code)

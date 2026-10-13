@@ -2,7 +2,7 @@
 venv/
 .env
 runs/
-data/raw/
+data/
 .chroma/
 __pycache__/
 *.pyc

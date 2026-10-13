@@ -6,9 +6,10 @@ answer carries numbered citations `[1]`, `[2]` that link to the source pages and
 dates; when retrieval is too weak to ground an answer it says so in one fixed sentence instead of
 guessing. Every AI call is recorded (model, tokens, cost, latency) under `runs/`.
 
-**Status: v2 shipped** (LangGraph conversation: classify, clarify, verify, escalate; model tiers;
-eval per tier; cost summary). Specs: `agent-os/specs/2026-10-13-zchut-v1-ingest-ask/spec.md`,
-`agent-os/specs/2026-10-13-zchut-v2-conversation/spec.md`.
+**Status: v3 shipped** (full כל זכות corpus: incremental, resumable crawl; see "Full corpus").
+Specs: `agent-os/specs/2026-10-13-zchut-v1-ingest-ask/spec.md`,
+`agent-os/specs/2026-10-13-zchut-v2-conversation/spec.md`,
+`agent-os/specs/2026-10-13-zchut-v3-full-corpus/spec.md`.
 
 The project is spec-driven (Agent OS v3): product docs in `agent-os/product/`, coding standards in
 `agent-os/standards/`, one spec per version in `agent-os/specs/`. Every acceptance criterion has a
@@ -18,7 +19,7 @@ test whose name quotes it, and `tests/test_spec_coverage.py` fails when one is m
 
 - Python 3.11, Typer CLI, ruff + mypy strict, pytest (offline only).
 - LlamaIndex for ingestion and retrieval; Chroma as the local vector store (v1), Qdrant Cloud free
-  tier later (v3).
+  tier later (v4).
 - Voyage AI `voyage-3.5-lite` embeddings. Rate limits: Voyage's free tier (no payment method)
   allows about 3 requests and 10,000 tokens per minute, so the embedder batches chunks under
   `embed.max_batch_tokens`, paces requests `embed.min_interval_s` (20 s) apart and backs off on
@@ -34,8 +35,7 @@ test whose name quotes it, and `tests/test_spec_coverage.py` fails when one is m
   כל זכות pages are read through the MediaWiki API (article HTML plus the revision timestamp as
   the last-updated date) over Python's standard-library HTTP client, because the site's bot
   protection blocks httpx. The User-Agent identifies the project with a contact address.
-  The full site is about 7,400 articles; full ingest via the API's `allpages` list is a later
-  version.
+  The full site is about 7,370 articles; `zchut crawl` indexes all of them (see "Full corpus").
 
 ## Running it
 
@@ -57,6 +57,8 @@ zchut ingest                                         # fetch config/zchut.json s
 zchut ask "מה התנאים לקבלת דמי אבטלה?" --k 5
 zchut eval --max-usd 0.30
 zchut cost --days 7                                  # sum runs/ by command and model
+zchut crawl plan                                     # whole-site diff against data/manifest.json
+zchut crawl run --max-minutes 120 --max-usd 0.50     # resumable; see "Full corpus"
 ```
 
 Environment variables (see `.env.example`; never commit a `.env`): `VOYAGE_API_KEY`,
@@ -73,6 +75,56 @@ text. `zchut ask` and `zchut chat` records add `graph` (`path`, `tier`, `verifie
 verifier, `...-eval-<tier>-<verifier>-report.json`, when it compares several) and
 `...-eval-comparison.md` with the side-by-side table. `zchut cost --days N` reads `runs/` and
 prints the spend per command and per model; it makes no calls and writes nothing.
+
+## Full corpus
+
+`zchut crawl` indexes every כל זכות article instead of the six configured pages and keeps the index
+current: a later run fetches and embeds only articles whose revision changed.
+
+- `zchut crawl plan` lists every namespace-0, non-redirect article through the MediaWiki
+  `allpages` API (500 titles per request, titles starting with a `crawl.skip_prefixes` entry
+  dropped), reads the latest revision of each in batches of 50, and diffs that against
+  `data/manifest.json`: new, changed (revision differs, or the last attempt failed), unchanged,
+  and gone (in the manifest, no longer listed). It prints the counts and a time estimate. Listing
+  costs about 165 requests, about 14 minutes at the 5 s crawl delay; it makes no AI call.
+- `zchut crawl run [--limit N] [--max-minutes M] [--max-usd X]` plans the same way, removes gone
+  articles from the store and the manifest, then processes new and changed articles in title order:
+  fetch (one API request, the revision date is already known), parse, chunk, embed, replace in
+  Chroma, and only then write the article's manifest entry. Chunks of consecutive articles share
+  embedding requests up to `embed.max_batch_tokens`. A fetch, parse or embed error marks the
+  article `status: error` (retried on the next run) and the run continues. `--max-minutes` stops
+  between articles (the listing is not counted); `--max-usd` stops before the embed call that
+  would cross it (exit code 2). Either way the manifest only lists articles that are in the store.
+- The record `runs/<ts>-crawl.json` holds the counts (planned, fetched, embedded, errors, skipped,
+  deleted, remaining), the chunk count in the store, elapsed seconds, embed tokens and cost, why it
+  stopped, and the estimate used; never a title, a URL or article text.
+- `data/` (the manifest and the raw API responses) and `.chroma/` are gitignored local state.
+
+Pace maths, free tier, from `config/zchut.json`:
+
+| step | rule | full crawl (7,370 articles) |
+| --- | --- | --- |
+| fetch | one request per article at the robots `Crawl-delay` (`crawl.fetch_delay_s`, 5 s) | 7,370 x 5 s = 10.2 h |
+| embed | `tokens_per_article` (3,000) x articles / `embed.max_batch_tokens` (8,000) x `embed.min_interval_s` (20 s) | 2,764 requests = 15.4 h |
+| wall time | embedding waits overlap the fetches, so the larger of the two | about 10-12 h if Voyage counts fewer tokens than the conservative estimate, at most about 15 h |
+
+`crawl plan` prints this estimate for the articles actually pending. Voyage's first 200 M tokens
+are free, but the cost guard prices tokens at list price (0.02 USD per million), so a full first
+crawl (about 22 M estimated tokens) needs `--max-usd 0.50`; a normal weekly run of changed articles
+fits the default cap. The store ends near 100 k chunks (about 400 MB in `.chroma/`).
+
+Resume: run it in sittings, e.g. `zchut crawl run --max-minutes 120 --max-usd 0.50` each evening,
+or once overnight. Every run re-plans and continues where the last one stopped; a crash or Ctrl+C
+costs at most the articles waiting in the current embedding batch, which are fetched again next
+time. To start over, delete `data/manifest.json` and `.chroma/`. A corrupt manifest stops the
+command instead of being overwritten.
+
+Paid tier: adding a card to Voyage lifts the rate limit (tokens stay free up to 200 M); set
+`embed.min_interval_s` to 0 and the crawl becomes fetch-bound at about 10 h. The 5 s crawl delay
+belongs to the site and cannot be bought down.
+
+After a full crawl, `zchut eval --retrieval-only` checks that hit@3 on the 30 questions stays at
+0.90 or above.
 
 ## Conversation graph
 
@@ -162,7 +214,7 @@ separates them and retrieval needs work first).
   call with a Hebrew message, exit code 2 and `budget_exceeded: true` in the run record. A full
   30-question eval on Haiku with verification needs about `--max-usd 0.30`. `zchut cost --days 7`
   shows the week's spend.
-- Nothing is re-embedded unless the page changed (weekly re-ingest arrives with v4).
+- Nothing is re-embedded unless the page changed: `zchut crawl run` skips unchanged revisions.
 
 ## Attribution
 

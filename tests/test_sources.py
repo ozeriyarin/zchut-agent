@@ -358,6 +358,18 @@ def test_mediawiki_fetcher_honours_crawl_delay_on_api_host(tmp_path: Path) -> No
     assert sleeps == [5.0, 5.0]
 
 
+def test_mediawiki_fetch_article_with_known_revision_makes_one_api_request(
+    tmp_path: Path,
+) -> None:
+    seen: list[str] = []
+    sleeps: list[float] = []
+    fetcher = _wiki_fetcher(tmp_path, b"User-agent: *\nCrawl-delay: 5\n", seen, sleeps)
+    fetched = fetcher.fetch_article(AVTALA, date(2026, 9, 30))
+    assert fetched.last_updated == date(2026, 9, 30)
+    assert [parse_qs(urlsplit(u).query)["action"] for u in seen[1:]] == [["parse"]]
+    assert sleeps == [5.0]
+
+
 def test_mediawiki_fetcher_honours_robots_disallow(tmp_path: Path) -> None:
     seen: list[str] = []
     fetcher = _wiki_fetcher(tmp_path, b"User-agent: *\nDisallow: /api.php\n", seen, [])

@@ -47,6 +47,15 @@ class EmbedSettings(BaseModel):
     min_interval_s: float = Field(default=0.0, ge=0)
 
 
+class CrawlSettings(BaseModel):
+    api_url: str
+    skip_prefixes: list[str] = []
+    list_batch: int = Field(default=500, gt=0, le=500)
+    revisions_batch: int = Field(default=50, gt=0, le=50)
+    fetch_delay_s: float = Field(gt=0)
+    tokens_per_article: int = Field(gt=0)
+
+
 class JevCriteria(BaseModel):
     supported: str
     unsupported: str
@@ -70,6 +79,7 @@ class PathSettings(BaseModel):
     fixtures_dir: Path
     questions: Path
     offices: Path = Path("config/offices.json")
+    manifest: Path = Path("data/manifest.json")
 
 
 class Settings(BaseModel):
@@ -82,6 +92,7 @@ class Settings(BaseModel):
     fetch: FetchSettings
     embed: EmbedSettings = EmbedSettings()
     graph: GraphSettings
+    crawl: CrawlSettings
     paths: PathSettings
 
 
