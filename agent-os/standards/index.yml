@@ -1,0 +1,6 @@
+root:
+  python-style: "Python 3.11, src layout, one package per concern, Protocol per external system, typed errors, ruff + mypy strict, naming"
+  secrets-and-config: "Secrets only via validated env at startup, committed non-secret config, redaction in run records, budget caps per provider"
+  ai-calls: "Model tiers behind one interface (Haiku default, Sonnet rare, Qwen cheap), grounded answers with citations, refusal below threshold, per-call cost records, --max-usd guard"
+  testing: "pytest offline only, HTML fixtures, fakes for embedder/store/model, acceptance criteria mapped to tests whose names quote them, spec-coverage test, pytest before commit"
+  sources-and-licensing: "Public pages only (kolzchut CC BY-SA, gov.il), robots.txt and rate limits, url/title/section/fetched_at/license per chunk, attribution, no personal data beyond the session, Hebrew-first output"

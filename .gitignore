@@ -1,0 +1,14 @@
+.venv/
+venv/
+.env
+runs/
+data/raw/
+.chroma/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+dist/

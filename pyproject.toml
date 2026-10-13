@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zchut-agent"
+version = "0.1.0"
+description = "Hebrew-first RAG support assistant for Israeli bureaucracy over public kolzchut.org.il and gov.il pages."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Yarin Ozeri", email = "ozeriyarin@gmail.com" }]
+dependencies = [
+  "llama-index-core>=0.12,<0.14",
+  "llama-index-embeddings-voyageai>=0.3,<0.5",
+  "llama-index-vector-stores-chroma>=0.4,<0.6",
+  "chromadb>=0.6,<2",
+  "anthropic>=0.50,<1",
+  "httpx>=0.27,<1",
+  "beautifulsoup4>=4.12,<5",
+  "pydantic>=2.7,<3",
+  "typer>=0.12,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<9",
+  "pytest-cov>=5,<7",
+  "ruff>=0.6,<1",
+  "mypy>=1.10,<2",
+]
+
+[project.scripts]
+zchut = "zchut.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "W"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["zchut"]
+mypy_path = "src"
