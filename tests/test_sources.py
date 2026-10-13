@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from datetime import date
@@ -200,3 +201,49 @@ def test_httpx_fetcher_robots_rate_limit_and_cache(tmp_path: Path) -> None:
     with pytest.raises(FetchError, match="robots"):
         fetcher.fetch_page("https://www.gov.il/private/b")
     assert seen == ["/robots.txt", "/he/a"]
+
+
+def _redirecting_fetcher(
+    tmp_path: Path, redirects: dict[str, str], seen: list[str]
+) -> HttpxFetcher:
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        target = redirects.get(str(request.url))
+        if target is not None:
+            return httpx.Response(301, headers={"Location": target})
+        return httpx.Response(200, text="<h1>כותרת</h1><p>טקסט</p>")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+    return HttpxFetcher(client, tmp_path / "raw", "zchut-agent/test", 0.0)
+
+
+def test_httpx_fetcher_follows_same_host_redirect(tmp_path: Path) -> None:
+    seen: list[str] = []
+    fetcher = _redirecting_fetcher(tmp_path, {"https://www.gov.il/he/old": "/he/new"}, seen)
+    fetched = fetcher.fetch_page("https://www.gov.il/he/old")
+    assert fetched.url == "https://www.gov.il/he/new"
+    name = hashlib.sha256(fetched.url.encode("utf-8")).hexdigest()[:16]
+    assert [p.name for p in (tmp_path / "raw").iterdir()] == [f"{name}.html"]
+
+
+@pytest.mark.parametrize(
+    "redirects",
+    [
+        {"https://www.gov.il/he/a": "https://evil.example/x"},
+        {
+            "https://www.gov.il/he/a": "https://evil.example/hop",
+            "https://evil.example/hop": "https://www.gov.il/he/b",
+        },
+    ],
+)
+def test_httpx_fetcher_refuses_cross_host_redirect(
+    tmp_path: Path, redirects: dict[str, str]
+) -> None:
+    seen: list[str] = []
+    fetcher = _redirecting_fetcher(tmp_path, redirects, seen)
+    with pytest.raises(FetchError, match="evil.example"):
+        fetcher.fetch_page("https://www.gov.il/he/a")
+    assert not (tmp_path / "raw").exists()
+    assert all("evil.example" not in url for url in seen)

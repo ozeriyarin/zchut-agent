@@ -159,7 +159,7 @@ def ingest(
         fetcher, urls = fixtures, fixtures.urls()
     else:
         fetch = ctx.settings.fetch
-        client = httpx.Client(timeout=fetch.timeout_s, follow_redirects=True)
+        client = httpx.Client(timeout=fetch.timeout_s)
         fetcher = HttpxFetcher(
             client, ctx.settings.paths.raw_dir, fetch.user_agent, fetch.min_interval_s
         )

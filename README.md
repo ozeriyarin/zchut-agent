@@ -23,6 +23,7 @@ test whose name quotes it, and `tests/test_spec_coverage.py` fails when one is m
   the cheap tier (v2); LangGraph for the conversation graph (v2).
 - Sources: kolzchut.org.il (Creative Commons BY-SA 3.0) and gov.il, fetched under robots.txt with
   a rate limit. Each chunk stores its URL, title, section path, fetch date and license.
+  Redirects are followed on the same host only (at most 3); cross-host redirects are refused.
 
 ## Running it
 

@@ -15,6 +15,8 @@ from pydantic import BaseModel
 
 from zchut.types import FetchedPage
 
+MAX_REDIRECTS = 3
+
 
 class FetchError(Exception):
     pass
@@ -72,9 +74,18 @@ class HttpxFetcher:
         self._last_request: dict[str, float] = {}
 
     def fetch_page(self, url: str) -> FetchedPage:
-        if not self._robots_for(url).can_fetch(self._user_agent, url):
-            raise FetchError(f"robots.txt disallows {url}")
-        response = self._get(url)
+        host = urlsplit(url).netloc
+        for _ in range(MAX_REDIRECTS + 1):
+            if not self._robots_for(url).can_fetch(self._user_agent, url):
+                raise FetchError(f"robots.txt disallows {url}")
+            response = self._get(url, follow_redirects=False)
+            if not response.is_redirect:
+                break
+            url = str(response.url.join(response.headers["Location"]))
+            if urlsplit(url).netloc != host:
+                raise FetchError(f"cross-host redirect to {urlsplit(url).netloc} refused")
+        else:
+            raise FetchError(f"more than {MAX_REDIRECTS} redirects for {url}")
         if response.status_code != 200:
             raise FetchError(f"status {response.status_code} for {url}")
         self._raw_dir.mkdir(parents=True, exist_ok=True)
@@ -91,7 +102,7 @@ class HttpxFetcher:
             self._robots[parts.netloc] = parser
         return self._robots[parts.netloc]
 
-    def _get(self, url: str) -> httpx.Response:
+    def _get(self, url: str, follow_redirects: bool = True) -> httpx.Response:
         host = urlsplit(url).netloc
         last = self._last_request.get(host)
         if last is not None:
@@ -100,6 +111,7 @@ class HttpxFetcher:
                 self._sleep(wait)
         self._last_request[host] = self._clock()
         try:
-            return self._client.get(url, headers={"User-Agent": self._user_agent})
+            headers = {"User-Agent": self._user_agent}
+            return self._client.get(url, headers=headers, follow_redirects=follow_redirects)
         except httpx.HTTPError as exc:
             raise FetchError(f"request to {host} failed: {exc}") from exc
