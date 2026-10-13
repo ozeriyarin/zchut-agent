@@ -31,7 +31,7 @@ def format_date(iso: str | None) -> str | None:
     return f"{d.day}.{d.month}.{d.year}"
 
 
-def build_prompt(question: str, hits: Sequence[Hit]) -> Prompt:
+def numbered_sources(hits: Sequence[Hit]) -> str:
     blocks = []
     for n, hit in enumerate(hits, start=1):
         c = hit.chunk
@@ -41,5 +41,9 @@ def build_prompt(question: str, hits: Sequence[Hit]) -> Prompt:
             lines.append(f"עודכן: {updated}")
         lines.append(c.text)
         blocks.append("\n".join(lines))
-    user = "קטעי מקור:\n\n" + "\n\n".join(blocks) + f"\n\nשאלה: {question}"
+    return "קטעי מקור:\n\n" + "\n\n".join(blocks)
+
+
+def build_prompt(question: str, hits: Sequence[Hit]) -> Prompt:
+    user = f"{numbered_sources(hits)}\n\nשאלה: {question}"
     return Prompt(system=SYSTEM_PROMPT, user=user, hits=tuple(hits))

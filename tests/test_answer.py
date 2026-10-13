@@ -82,7 +82,7 @@ def test_criterion_6_refusal_without_model_call(
     assert result.output.splitlines()[0] == REFUSAL_SENTENCE
     record = json.loads(next((cli_root / "runs").glob("*-ask.json")).read_text("utf-8"))
     assert record["refused"] is True
-    assert [c["role"] for c in record["calls"]] == ["embed"]
+    assert [c["role"] for c in record["calls"]] == ["classify"]
 
 
 @pytest.mark.parametrize(

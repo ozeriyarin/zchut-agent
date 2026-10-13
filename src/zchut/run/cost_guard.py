@@ -56,20 +56,31 @@ class CostGuard:
         return self._call("embed", embedder.model, estimate, send)
 
     def answer(self, model: AnswerModel, prompt: Prompt) -> str:
-        tokens = estimate_tokens(prompt.system + prompt.user)
-        estimate = cost_usd(self.prices, model.model, Usage(tokens, model.max_tokens))
-
         def send() -> tuple[str, Usage]:
             reply = model.answer(prompt)
             return reply.text, reply.usage
 
-        return self._call("answer", model.model, estimate, send)
+        return self.call("answer", model.model, prompt.system + prompt.user, model.max_tokens, send)
+
+    def call(
+        self,
+        role: str,
+        model: str,
+        prompt_text: str,
+        max_tokens: int,
+        send: Callable[[], tuple[T, Usage]],
+    ) -> T:
+        estimate = cost_usd(self.prices, model, Usage(estimate_tokens(prompt_text), max_tokens))
+        return self._call(role, model, estimate, send)
+
+    def reserve(self, estimate: float) -> None:
+        if self.spent + estimate > self.max_usd:
+            raise BudgetExceeded(self.spent, estimate, self.max_usd)
 
     def _call(
         self, role: str, model: str, estimate: float, send: Callable[[], tuple[T, Usage]]
     ) -> T:
-        if self.spent + estimate > self.max_usd:
-            raise BudgetExceeded(self.spent, estimate, self.max_usd)
+        self.reserve(estimate)
         started = time.perf_counter()
         result, usage = send()
         latency_ms = int((time.perf_counter() - started) * 1000)

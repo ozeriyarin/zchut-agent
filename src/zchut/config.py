@@ -25,6 +25,9 @@ class RetrievalSettings(BaseModel):
 class ModelSettings(BaseModel):
     answer: str
     embed: str
+    qwen: str
+    vllm: str
+    jev: str
 
 
 class AnswerSettings(BaseModel):
@@ -44,12 +47,29 @@ class EmbedSettings(BaseModel):
     min_interval_s: float = Field(default=0.0, ge=0)
 
 
+class JevCriteria(BaseModel):
+    supported: str
+    unsupported: str
+
+
+class JevSettings(BaseModel):
+    instructions: str
+    criteria: JevCriteria
+
+
+class GraphSettings(BaseModel):
+    classify_max_tokens: int = Field(gt=0)
+    verify_max_tokens: int = Field(gt=0)
+    jev: JevSettings
+
+
 class PathSettings(BaseModel):
     runs_dir: Path
     raw_dir: Path
     chroma_dir: Path
     fixtures_dir: Path
     questions: Path
+    offices: Path = Path("config/offices.json")
 
 
 class Settings(BaseModel):
@@ -61,6 +81,7 @@ class Settings(BaseModel):
     answer: AnswerSettings
     fetch: FetchSettings
     embed: EmbedSettings = EmbedSettings()
+    graph: GraphSettings
     paths: PathSettings
 
 
@@ -87,6 +108,8 @@ class Secrets(BaseModel):
     voyage_api_key: str | None = None
     anthropic_api_key: str | None = None
     openrouter_api_key: str | None = None
+    vllm_url: str | None = None
+    vllm_api_key: str | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Secrets:
@@ -95,6 +118,8 @@ class Secrets(BaseModel):
             voyage_api_key=env.get("VOYAGE_API_KEY") or None,
             anthropic_api_key=anthropic or None,
             openrouter_api_key=env.get("OPENROUTER_API_KEY") or None,
+            vllm_url=env.get("ZCHUT_VLLM_URL") or None,
+            vllm_api_key=env.get("ZCHUT_VLLM_API_KEY") or None,
         )
 
     def require_voyage(self) -> str:
@@ -109,8 +134,23 @@ class Secrets(BaseModel):
             )
         return self.anthropic_api_key
 
+    def require_openrouter(self) -> str:
+        if not self.openrouter_api_key:
+            raise ConfigError("missing environment variable OPENROUTER_API_KEY")
+        return self.openrouter_api_key
+
+    def require_vllm_url(self) -> str:
+        if not self.vllm_url:
+            raise ConfigError("missing environment variable ZCHUT_VLLM_URL")
+        return self.vllm_url
+
     def values(self) -> list[str]:
-        keys = [self.voyage_api_key, self.anthropic_api_key, self.openrouter_api_key]
+        keys = [
+            self.voyage_api_key,
+            self.anthropic_api_key,
+            self.openrouter_api_key,
+            self.vllm_api_key,
+        ]
         return [k for k in keys if k]
 
 
@@ -136,7 +176,14 @@ def load_prices(root: Path) -> Prices:
 
 
 SECRET_NAMES = frozenset(
-    {"VOYAGE_API_KEY", "ZCHUT_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"}
+    {
+        "VOYAGE_API_KEY",
+        "ZCHUT_ANTHROPIC_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "OPENROUTER_API_KEY",
+        "ZCHUT_VLLM_URL",
+        "ZCHUT_VLLM_API_KEY",
+    }
 )
 
 

@@ -7,13 +7,14 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from conftest import AVTALA, PENSIA, ROOT, TAX, make_deps, make_guard
+from conftest import AVTALA, PENSIA, ROOT, TAX, make_deps, make_graph_deps, make_guard
 from zchut.answer.model import FakeAnswerModel
 from zchut.cli import app
 from zchut.config import ConfigError, Prices, load_settings
 from zchut.eval.metrics import citation_precision, hit_at_k, rate
 from zchut.eval.questions import EvalQuestion, load_questions
 from zchut.eval.run_eval import _calibration_line, calibrate, run_eval
+from zchut.graph.verify import FakeVerifier
 from zchut.index.embedder import FAKE_EMBED_MODEL, FakeEmbedder, InputType
 from zchut.index.store import InMemoryVectorStore
 from zchut.run.ask import AskDeps
@@ -77,7 +78,7 @@ def test_run_eval_retrieval_only_makes_no_answer_calls(
     questions = load_questions(ROOT / "eval" / "questions.json")[:3]
     model = FakeAnswerModel()
     guard = make_guard(priced)
-    outcome, report = run_eval(questions, make_deps(fixture_store, model, 0.3), guard, True)
+    outcome, [report] = run_eval(questions, make_deps(fixture_store, model, 0.3), guard, [])
     assert outcome.exit_code == 0 and model.calls == 0
     assert report.hit_at_3 == 1.0 and report.citation_precision is None
     assert {c.role for c in guard.recorder.record.calls} == {"embed"}
@@ -161,7 +162,7 @@ def test_run_eval_embeds_all_questions_in_one_call(
     spy = SpyEmbedder()
     model = FakeAnswerModel()
     guard = make_guard(priced)
-    outcome, report = run_eval(questions, AskDeps(spy, fixture_store, model, 5, 0.3), guard, True)
+    outcome, [report] = run_eval(questions, AskDeps(spy, fixture_store, model, 5, 0.3), guard, [])
     assert outcome.exit_code == 0 and spy.batches == [30] and model.calls == 0
     assert [c.role for c in guard.recorder.record.calls] == ["embed"]
     assert len(report.rows) == 30
@@ -176,13 +177,58 @@ def test_run_eval_budget_covers_the_whole_query_batch(
     spy = SpyEmbedder()
     guard = make_guard(priced, estimate * 0.99)
     outcome, _ = run_eval(
-        questions, AskDeps(spy, fixture_store, FakeAnswerModel(), 5, 0.3), guard, True
+        questions, AskDeps(spy, fixture_store, FakeAnswerModel(), 5, 0.3), guard, []
     )
     assert outcome.exit_code == 2 and spy.batches == []
     outcome, _ = run_eval(
         questions,
         AskDeps(spy, fixture_store, FakeAnswerModel(), 5, 0.3),
         make_guard(priced, estimate),
-        True,
+        [],
     )
     assert outcome.exit_code == 0 and spy.batches == [30]
+
+
+def test_criterion_5_eval_per_tier_with_side_by_side_table(cli_root: Path) -> None:
+    """criterion 5: "`zchut eval --tiers haiku,qwen-openrouter --dry-run` writes one report per tier plus a side-by-side table with verification pass rate, escalation rate, cost per question and latency per tier." """
+    result = runner.invoke(app, ["eval", "--tiers", "haiku,qwen-openrouter", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    runs = cli_root / "runs"
+    reports = [json.loads(p.read_text("utf-8")) for p in sorted(runs.glob("*-report.json"))]
+    assert [(r["tier"], r["verifier"]) for r in reports] == [
+        ("haiku", "haiku"),
+        ("qwen-openrouter", "haiku"),
+    ]
+    for report in reports:
+        assert report["questions"] == 30 and report["verification_pass_rate"] is not None
+        assert report["escalation_rate"] is not None
+        assert report["mean_cost_usd"] == 0 and report["mean_latency_ms"] >= 0
+        assert all("verify" in r["path"] for r in report["rows"] if not r["refused"])
+    table = next(runs.glob("*-comparison.md")).read_text("utf-8").splitlines()
+    for column in ("verification pass rate", "escalation rate", "cost / question", "latency"):
+        assert column in table[0]
+    assert [line.split(" | ")[:2] for line in table[2:]] == [
+        ["| haiku", "haiku"],
+        ["| qwen-openrouter", "haiku"],
+    ]
+    assert "\n".join(table) in result.output
+
+
+def test_graph_eval_costs_add_up_per_question(
+    fixture_store: InMemoryVectorStore, priced: Prices
+) -> None:
+    questions = load_questions(ROOT / "eval" / "questions.json")[:4]
+    guard = make_guard(priced)
+    combos = [
+        make_graph_deps(fixture_store, FakeAnswerModel(), 0.3, FakeVerifier()),
+        make_graph_deps(fixture_store, FakeAnswerModel(), 0.3, None, "vllm"),
+    ]
+    outcome, reports = run_eval(questions, combos[0].ask, guard, combos)
+    assert outcome.exit_code == 0 and [r.tier for r in reports] == ["haiku", "vllm"]
+    record = guard.recorder.record
+    assert [c.role for c in record.calls].count("embed") == 1
+    rows = [row for r in reports for row in r.rows]
+    embed = record.calls[0].cost_usd
+    assert sum(r.cost_usd for r in rows) + embed == pytest.approx(record.total_cost_usd)
+    assert reports[0].mean_cost_usd > 0 and reports[0].verification_pass_rate == 1.0
+    assert reports[1].verification_pass_rate is None and reports[1].escalation_rate == 0.0

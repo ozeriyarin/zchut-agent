@@ -1,0 +1,22 @@
+{
+  "unemployment": {
+    "name": "שירות התעסוקה הישראלי",
+    "handles": "רישום כדורש עבודה, התייצבות ואישורים לתביעת דמי אבטלה",
+    "contact_url": "https://www.taasuka.gov.il/he"
+  },
+  "pension": {
+    "name": "רשות שוק ההון, ביטוח וחיסכון",
+    "handles": "פנסיית חובה, קרנות פנסיה ותלונות על הפרשות שלא הועברו",
+    "contact_url": "https://www.gov.il/he/departments/capital_market_insurance_and_saving_authority"
+  },
+  "tax": {
+    "name": "רשות המסים בישראל",
+    "handles": "החזרי מס הכנסה, נקודות זיכוי ותיאומי מס",
+    "contact_url": "https://www.gov.il/he/departments/israel_tax_authority"
+  },
+  "other": {
+    "name": "המוסד לביטוח לאומי",
+    "handles": "קצבאות, דמי אבטלה, דמי לידה וזכויות ביטוח לאומי אחרות",
+    "contact_url": "https://www.btl.gov.il/"
+  }
+}

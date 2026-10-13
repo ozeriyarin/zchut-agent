@@ -1,4 +1,7 @@
 {
   "claude-haiku-4-5": {"input": 1.0, "output": 5.0, "cache_read": 0.1, "cache_write": 1.25},
-  "voyage-3.5-lite": {"input": 0.02}
+  "voyage-3.5-lite": {"input": 0.02},
+  "qwen/qwen3-32b": {"input": 0.1, "output": 0.3},
+  "typesafe/jev-1.13": {"input": 0.1, "output": 0.0},
+  "vllm": {"input": 0.0, "output": 0.0}
 }

@@ -20,6 +20,7 @@ TESTS = ROOT / "tests"
 # (spec folder, prefix used in the quoting string, number of criteria)
 SPEC_ROWS: list[tuple[str, str, int]] = [
     ("2026-10-13-zchut-v1-ingest-ask", "", 10),
+    ("2026-10-13-zchut-v2-conversation", "", 8),
 ]
 UNIMPLEMENTED: set[str] = set()
 
@@ -56,3 +57,8 @@ def test_every_acceptance_criterion_has_a_test_whose_name_quotes_it(
 def test_criterion_10_pytest_passes_every_criterion_quoted() -> None:
     """criterion 10: "`pytest` passes; every criterion above has a test whose name quotes it." """
     assert len(criteria("2026-10-13-zchut-v1-ingest-ask")) == 10
+
+
+def test_criterion_8_v2_pytest_passes_every_criterion_quoted() -> None:
+    """criterion 8: "`pytest` passes; every criterion has a test whose name quotes it." """
+    assert len(criteria("2026-10-13-zchut-v2-conversation")) == 8

@@ -105,12 +105,22 @@ class RetrievedRef(BaseModel):
     score: float
 
 
+class GraphRecord(BaseModel):
+    path: list[str]
+    tier: str
+    verifier: str | None
+    verified: bool | None
+    escalated: bool
+    clarified: bool
+
+
 class RunRecord(BaseModel):
     command: str
     started_at: str
     dry_run: bool
     max_usd: float
     question_hash: str | None = None
+    history_hash: str | None = None
     retrieved: list[RetrievedRef] = []
     refused: bool | None = None
     dropped_citations: int = 0
@@ -120,3 +130,4 @@ class RunRecord(BaseModel):
     errors: list[str] = []
     calls: list[CallRecord] = []
     total_cost_usd: float = 0.0
+    graph: GraphRecord | None = None

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Protocol
 
 import anthropic
+from anthropic import Omit, omit
+from anthropic.types import OutputConfigParam
 
 from zchut.answer.prompt import Prompt
 from zchut.tokens import estimate_tokens
@@ -32,24 +35,54 @@ class HaikuAnswerModel:
         self._client = client
 
     def answer(self, prompt: Prompt) -> ModelReply:
-        try:
-            message = self._client.messages.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                system=prompt.system,
-                messages=[{"role": "user", "content": prompt.user}],
-            )
-        except anthropic.APIError as exc:
-            raise AnswerError(f"answer model call failed: {type(exc).__name__}") from exc
-        text = "".join(block.text for block in message.content if block.type == "text")
-        u = message.usage
-        usage = Usage(
-            input_tokens=u.input_tokens,
-            output_tokens=u.output_tokens,
-            cache_read_tokens=u.cache_read_input_tokens or 0,
-            cache_write_tokens=u.cache_creation_input_tokens or 0,
+        return _create(self._client, self.model, self.max_tokens, prompt.system, prompt.user)
+
+
+def _create(
+    client: anthropic.Anthropic,
+    model: str,
+    max_tokens: int,
+    system: str,
+    user: str,
+    schema: dict[str, object] | None = None,
+) -> ModelReply:
+    output: OutputConfigParam | Omit = (
+        {"format": {"type": "json_schema", "schema": schema}} if schema else omit
+    )
+    try:
+        message = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+            output_config=output,
         )
-        return ModelReply(text=text, usage=usage)
+    except anthropic.APIError as exc:
+        raise AnswerError(f"{model} call failed: {type(exc).__name__}") from exc
+    text = "".join(block.text for block in message.content if block.type == "text")
+    u = message.usage
+    usage = Usage(
+        input_tokens=u.input_tokens,
+        output_tokens=u.output_tokens,
+        cache_read_tokens=u.cache_read_input_tokens or 0,
+        cache_write_tokens=u.cache_creation_input_tokens or 0,
+    )
+    return ModelReply(text=text, usage=usage)
+
+
+def haiku_json(
+    client: anthropic.Anthropic,
+    model: str,
+    max_tokens: int,
+    system: str,
+    user: str,
+    schema: dict[str, object],
+) -> tuple[object, Usage]:
+    reply = _create(client, model, max_tokens, system, user, schema)
+    try:
+        return json.loads(reply.text), reply.usage
+    except ValueError as exc:
+        raise AnswerError(f"{model} returned invalid JSON") from exc
 
 
 def make_haiku_client(api_key: str, timeout_s: float) -> anthropic.Anthropic:

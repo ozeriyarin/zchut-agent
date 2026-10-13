@@ -9,6 +9,7 @@ from typing import Literal, Protocol
 
 import httpx
 
+from zchut.http_retry import send_with_backoff
 from zchut.tokens import estimate_tokens
 from zchut.types import EmbedResult, Usage
 
@@ -16,8 +17,6 @@ InputType = Literal["document", "query"]
 VOYAGE_URL = "https://api.voyageai.com/v1/embeddings"
 FAKE_EMBED_MODEL = "fake-embedder"
 MAX_BATCH_TEXTS = 128
-BACKOFF_START_S = 20.0
-BACKOFF_CAP_S = 60.0
 
 
 class EmbedError(Exception):
@@ -81,15 +80,11 @@ class VoyageEmbedder:
     ) -> tuple[list[list[float]], int]:
         body: dict[str, object] = {"input": texts, "model": self.model, "input_type": input_type}
         headers = {"Authorization": f"Bearer {self._api_key}"}
-        for attempt in range(self._max_retries):
-            response = self._post(body, headers)
-            status = response.status_code
-            if status != 429 and status < 500:
-                break
-            if attempt + 1 < self._max_retries:
-                self._sleep(self._backoff_s(response, attempt))
-        if status != 200:
-            raise EmbedError(f"voyage answered {status} after {attempt + 1} attempt(s)")
+        response, attempts = send_with_backoff(
+            lambda: self._post(body, headers), self._max_retries, self._sleep
+        )
+        if response.status_code != 200:
+            raise EmbedError(f"voyage answered {response.status_code} after {attempts} attempt(s)")
         try:
             payload = response.json()
             rows = sorted(payload["data"], key=lambda row: int(row["index"]))
@@ -100,13 +95,6 @@ class VoyageEmbedder:
         if len(vectors) != len(texts):
             raise EmbedError("voyage returned a different number of vectors")
         return vectors, tokens
-
-    def _backoff_s(self, response: httpx.Response, attempt: int) -> float:
-        retry_after: str = response.headers.get("Retry-After", "")
-        try:
-            return max(0.0, float(retry_after))
-        except ValueError:
-            return min(BACKOFF_START_S * 2.0**attempt, BACKOFF_CAP_S)
 
     def _pace(self) -> None:
         if self._last_request is not None:

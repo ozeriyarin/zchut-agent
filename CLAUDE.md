@@ -30,6 +30,6 @@ Ozeri; hard budget under 10 USD per month.
   user's question text or anything personal.
 - Only public sources, under robots.txt and rate limits; every chunk keeps url, title, section,
   fetched_at and license.
-- Every AI call goes through the cost guard; `--max-usd` default 0.05.
+- Every AI call goes through the cost guard; `--max-usd` default 0.08.
 - Commit messages: `<type>: <what it does>` (`feat`, `fix`, `chore`, `docs`), one spec per feature
   commit.
