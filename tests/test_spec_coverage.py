@@ -21,7 +21,7 @@ TESTS = ROOT / "tests"
 SPEC_ROWS: list[tuple[str, str, int]] = [
     ("2026-10-13-zchut-v1-ingest-ask", "", 10),
 ]
-UNIMPLEMENTED = {"2026-10-13-zchut-v1-ingest-ask"}
+UNIMPLEMENTED: set[str] = set()
 
 
 def criteria(spec: str) -> list[tuple[str, str]]:

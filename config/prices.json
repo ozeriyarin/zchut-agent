@@ -1,0 +1,4 @@
+{
+  "claude-haiku-4-5": {"input": 1.0, "output": 5.0, "cache_read": 0.1, "cache_write": 1.25},
+  "voyage-3.5-lite": {"input": 0.02}
+}

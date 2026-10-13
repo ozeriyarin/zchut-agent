@@ -6,7 +6,7 @@ answer carries numbered citations `[1]`, `[2]` that link to the source pages and
 dates; when retrieval is too weak to ground an answer it says so in one fixed sentence instead of
 guessing. Every AI call is recorded (model, tokens, cost, latency) under `runs/`.
 
-**Status: v1 in spec.** Nothing runs yet. The v1 spec is
+**Status: v1 shipped** (ingest + ask + eval, CLI). Spec:
 `agent-os/specs/2026-10-13-zchut-v1-ingest-ask/spec.md`.
 
 The project is spec-driven (Agent OS v3): product docs in `agent-os/product/`, coding standards in
@@ -24,29 +24,53 @@ test whose name quotes it, and `tests/test_spec_coverage.py` fails when one is m
 - Sources: kolzchut.org.il (Creative Commons BY-SA 3.0) and gov.il, fetched under robots.txt with
   a rate limit. Each chunk stores its URL, title, section path, fetch date and license.
 
-## Running it (once v1 lands)
+## Running it
 
 ```bash
 python -m venv .venv && .venv/Scripts/activate      # or source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                                               # no network, no keys
+pytest                                               # offline: no network, no keys
+
+# --dry-run uses the fake embedder, the in-memory store and a canned answer model
 zchut ingest --from-fixtures tests/fixtures/pages --dry-run
-zchut ingest                                         # fetch the configured pages into .chroma/
-zchut ask "מה התנאים לקבלת דמי אבטלה?"
-zchut eval                                           # hit@3, citation precision, refusal rate
+zchut ask "מה צריך להביא לרישום בלשכת התעסוקה?" --dry-run
+zchut eval --dry-run                                 # add --retrieval-only to skip answers
+
+# real run: Voyage + Chroma (.chroma/) + Haiku; needs the keys below
+zchut ingest                                         # fetch config/zchut.json sources
+zchut ask "מה התנאים לקבלת דמי אבטלה?" --k 5
+zchut eval --max-usd 0.10
 ```
 
 Environment variables (see `.env.example`; never commit a `.env`): `VOYAGE_API_KEY`,
 `ZCHUT_ANTHROPIC_API_KEY` (fallback `ANTHROPIC_API_KEY`), `OPENROUTER_API_KEY` (optional, v2).
+Settings live in `config/zchut.json` (sources, chunk size, `retrieval.k`, `retrieval.min_score`,
+default cap) and prices in `config/prices.json`.
 
-`eval/questions.json` is an empty list until v1 seeds it with 30 questions and their expected
-source URLs.
+Every command writes `runs/<YYYY-MM-DD-HHMMSS>-<command>.json` (gitignored): per-call role, model,
+tokens, latency and cost, the retrieved chunk ids and scores, and a hash of the question, never its
+text. `zchut eval` also writes `...-eval-report.json` with one row per question.
+
+## Eval
+
+`eval/questions.json` holds 30 Hebrew questions: 24 with expected source URLs (the three fixture
+pages) and 6 out-of-scope questions that should be refused. Dry run on the fixture index (fake
+embedder, so these numbers check the pipeline, not retrieval quality):
+
+| metric | dry run |
+| --- | --- |
+| hit@3 | 1.00 |
+| citation precision | 0.83 |
+| refusal rate (expected 0.20) | 0.13 |
 
 ## Budget rules
 
 - Under 10 USD per month, all providers together. Anthropic has a console hard limit; Voyage and
   OpenRouter are prepaid; Chroma and the Qdrant free tier cost nothing.
-- Every command takes `--max-usd` (default 0.05) and aborts before the call that would cross it.
+- Every command takes `--max-usd` (default 0.05). Before each embed or answer call the guard
+  estimates its cost from the prompt size and `config/prices.json`; if it would cross the cap the
+  command stops before the call with a Hebrew message, exit code 2 and `budget_exceeded: true` in
+  the run record. A full 30-question eval on Haiku needs about `--max-usd 0.10`.
 - Nothing is re-embedded unless the page changed (weekly re-ingest arrives with v4).
 
 ## Attribution

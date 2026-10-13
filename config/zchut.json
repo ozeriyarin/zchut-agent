@@ -1,0 +1,26 @@
+{
+  "sources": [
+    "https://www.kolzchut.org.il/he/דמי_אבטלה",
+    "https://www.kolzchut.org.il/he/פנסיית_חובה",
+    "https://www.kolzchut.org.il/he/קצבת_זקנה",
+    "https://www.kolzchut.org.il/he/החזר_מס_הכנסה",
+    "https://www.gov.il/he/service/income-tax-refund-for-employees"
+  ],
+  "chunk": {"max_chars": 700, "min_chars": 100},
+  "retrieval": {"k": 5, "min_score": 0.3},
+  "max_usd": 0.05,
+  "models": {"answer": "claude-haiku-4-5", "embed": "voyage-3.5-lite"},
+  "answer": {"max_tokens": 800, "timeout_s": 30},
+  "fetch": {
+    "user_agent": "zchut-agent/0.1 (+mailto:ozeriyarin@gmail.com)",
+    "min_interval_s": 1.0,
+    "timeout_s": 20
+  },
+  "paths": {
+    "runs_dir": "runs",
+    "raw_dir": "data/raw",
+    "chroma_dir": ".chroma",
+    "fixtures_dir": "tests/fixtures/pages",
+    "questions": "eval/questions.json"
+  }
+}
