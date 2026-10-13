@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+import uuid
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Protocol
 
@@ -10,10 +11,14 @@ from chromadb.config import Settings as ChromaSettings
 from llama_index.core.schema import NodeRelationship, RelatedNodeInfo, TextNode
 from llama_index.core.vector_stores.types import VectorStoreQuery
 from llama_index.vector_stores.chroma import ChromaVectorStore
+from qdrant_client import QdrantClient
+from qdrant_client import models as qm
 
 from zchut.types import Chunk, Hit
 
 COLLECTION = "zchut"
+QDRANT_DIMS = 1024
+Rows = list[tuple[Chunk, list[float]]]
 _META = ("url", "title", "section", "fetched_at", "license", "last_updated")
 
 
@@ -83,6 +88,10 @@ def _chunk(node_id: str, text: str, metadata: dict[str, object]) -> Chunk:
     )
 
 
+class StoreError(Exception):
+    pass
+
+
 class ChromaStore:
     def __init__(self, path: Path) -> None:
         client = chromadb.PersistentClient(
@@ -114,3 +123,72 @@ class ChromaStore:
 
     def count(self) -> int:
         return self._collection.count()
+
+    def rows(self, batch: int) -> Iterator[Rows]:
+        for offset in range(0, self.count(), batch):
+            got = self._collection.get(
+                include=["documents", "metadatas", "embeddings"], limit=batch, offset=offset
+            )
+            docs, metas = got["documents"] or [], got["metadatas"] or []
+            # Chroma returns embeddings as a numpy array, whose truth value is ambiguous.
+            vecs = [] if got["embeddings"] is None else got["embeddings"]
+            yield [
+                (_chunk(i, d, dict(m)), [float(x) for x in v])
+                for i, d, m, v in zip(got["ids"], docs, metas, vecs, strict=True)
+            ]
+
+
+def _url_filter(url: str) -> qm.Filter:
+    return qm.Filter(must=[qm.FieldCondition(key="url", match=qm.MatchValue(value=url))])
+
+
+class QdrantStore:
+    def __init__(self, client: QdrantClient, dims: int = QDRANT_DIMS) -> None:
+        self._client = client
+        if not client.collection_exists(COLLECTION):
+            params = qm.VectorParams(size=dims, distance=qm.Distance.COSINE)
+            client.create_collection(COLLECTION, vectors_config=params)
+            client.create_payload_index(COLLECTION, "url", qm.PayloadSchemaType.KEYWORD)
+
+    def replace(self, url: str, chunks: Sequence[Chunk], vectors: Sequence[list[float]]) -> None:
+        self.delete(url)
+        self.upsert(list(zip(chunks, vectors, strict=True)))
+
+    def upsert(self, rows: Rows) -> None:
+        points = [
+            qm.PointStruct(
+                id=str(uuid.uuid5(uuid.NAMESPACE_URL, chunk.id)),
+                vector=vector,
+                payload={"chunk_id": chunk.id, "text": chunk.text}
+                | {key: getattr(chunk, key) for key in _META},
+            )
+            for chunk, vector in rows
+        ]
+        if points:
+            self._client.upsert(COLLECTION, points=points)
+
+    def delete(self, url: str) -> None:
+        self._client.delete(COLLECTION, points_selector=qm.FilterSelector(filter=_url_filter(url)))
+
+    def search(self, vector: Sequence[float], k: int) -> list[Hit]:
+        found = self._client.query_points(COLLECTION, query=list(vector), limit=k)
+        return [
+            Hit(
+                chunk=_chunk(str(p.payload["chunk_id"]), str(p.payload["text"]), p.payload),
+                score=p.score,
+            )
+            for p in found.points
+            if p.payload is not None
+        ]
+
+    def count(self) -> int:
+        return self._client.count(COLLECTION, exact=True).count
+
+
+def migrate(source: ChromaStore, target: QdrantStore, batch: int = 256) -> int:
+    for rows in source.rows(batch):
+        target.upsert(rows)
+    copied, expected = target.count(), source.count()
+    if copied != expected:
+        raise StoreError(f"the source holds {expected} chunks but the target holds {copied}")
+    return copied

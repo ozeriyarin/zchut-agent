@@ -135,13 +135,24 @@ def build_graph(deps: GraphDeps, guard: CostGuard) -> Graph:
 
 
 def converse(
-    deps: GraphDeps, guard: CostGuard, question: str, history: list[str], reply: Reply | None
+    deps: GraphDeps,
+    guard: CostGuard,
+    question: str,
+    history: list[str],
+    reply: Reply | None,
+    *,
+    pause: bool = False,
+    resumed: bool = False,
 ) -> ConversationState:
     guard.reserve(plan_usd(deps, guard, question))
     app = build_graph(deps, guard)
     config: RunnableConfig = {"configurable": {"thread_id": uuid4().hex}}
+    # pause: stop at the interrupt; resumed: history already ends with the clarification reply.
     start = ConversationState(
-        question=question, history=history[-HISTORY_CAP:], can_clarify=reply is not None
+        question=question,
+        history=history[-HISTORY_CAP:],
+        can_clarify=reply is not None or pause,
+        clarified=resumed,
     )
     out = app.invoke(start, config)
     if reply is not None and "__interrupt__" in out:

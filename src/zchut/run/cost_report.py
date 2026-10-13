@@ -3,11 +3,8 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 
-from pydantic import ValidationError
-
-from zchut.types import RunRecord
+from zchut.run.records import RunRecordSink
 
 
 @dataclass
@@ -32,18 +29,10 @@ class CostSummary:
         return sum(t.cost_usd for t in self.by_command.values())
 
 
-def summarize_runs(runs_dir: Path, since: datetime) -> CostSummary:
-    summary = CostSummary(since)
-    for path in sorted(runs_dir.glob("*.json")):
-        if path.stem.endswith("-report"):
-            continue
-        try:
-            record = RunRecord.model_validate_json(path.read_text(encoding="utf-8"))
-        except (OSError, ValidationError):
-            summary.skipped.append(path.name)
-            continue
-        if datetime.fromisoformat(record.started_at) < since:
-            continue
+def summarize_runs(sink: RunRecordSink, since: datetime) -> CostSummary:
+    records, skipped = sink.read(since)
+    summary = CostSummary(since, skipped=skipped)
+    for record in records:
         summary.by_command[record.command].add(record.total_cost_usd)
         for call in record.calls:
             summary.by_model[call.model].add(call.cost_usd)

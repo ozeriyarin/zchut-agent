@@ -23,6 +23,7 @@ SPEC_ROWS: list[tuple[str, str, int]] = [
     ("2026-10-13-zchut-v2-conversation", "", 8),
     ("2026-10-13-zchut-v3-full-corpus", "", 8),
     ("2026-10-13-zchut-v4a-prompt-tuning", "", 6),
+    ("2026-10-13-zchut-v4-telegram", "", 8),
 ]
 UNIMPLEMENTED: set[str] = set()
 

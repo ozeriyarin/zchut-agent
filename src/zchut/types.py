@@ -151,3 +151,4 @@ class RunRecord(BaseModel):
     total_cost_usd: float = 0.0
     graph: GraphRecord | None = None
     crawl: CrawlRecord | None = None
+    bot_event: str | None = None

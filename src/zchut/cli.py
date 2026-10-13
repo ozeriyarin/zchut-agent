@@ -13,9 +13,23 @@ import anthropic
 import click
 import httpx
 import typer
+import uvicorn
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from google.cloud.firestore import Client as FirestoreClient
+from qdrant_client import QdrantClient
 
 from zchut.answer.model import FAKE_ANSWER_MODEL, AnswerModel, FakeAnswerModel, make_haiku_client
 from zchut.answer.tiers import TIERS, VERIFIERS, make_answer_model, parse_choices
+from zchut.bot.app import BotDeps, create_app, webhook_path
+from zchut.bot.sessions import FirestoreSessionStore, InMemorySessionStore, SessionStore
+from zchut.bot.telegram import (
+    SECRET_HEADER,
+    SendLog,
+    TelegramClient,
+    recording_client,
+    synthetic_update,
+)
 from zchut.config import (
     ConfigError,
     Prices,
@@ -43,12 +57,19 @@ from zchut.index.crawl import CrawlDeps, estimate, format_plan, format_run, make
 from zchut.index.embedder import FAKE_EMBED_MODEL, Embedder, FakeEmbedder, VoyageEmbedder
 from zchut.index.ingest import ingest as ingest_pages
 from zchut.index.manifest import ManifestError, load_manifest
-from zchut.index.store import ChromaStore, InMemoryVectorStore, VectorStore
+from zchut.index.store import (
+    ChromaStore,
+    InMemoryVectorStore,
+    QdrantStore,
+    StoreError,
+    VectorStore,
+    migrate,
+)
 from zchut.run.ask import AskDeps
 from zchut.run.converse import run_conversation
 from zchut.run.cost_guard import CostGuard, Outcome, guarded
 from zchut.run.cost_report import format_cost, summarize_runs
-from zchut.run.records import RunRecorder
+from zchut.run.records import FirestoreRunSink, LocalRunSink, RunRecorder, RunRecordSink
 from zchut.sources.fetch import Fetcher, FetchError, FetcherRouter, FixtureFetcher, HttpxFetcher
 from zchut.sources.mediawiki import MediaWikiFetcher, urllib_opener
 from zchut.types import CrawlRecord, IngestReport
@@ -58,6 +79,10 @@ app = typer.Typer(
 )
 crawl_app = typer.Typer(no_args_is_help=True, help="Crawl every כל זכות article incrementally.")
 app.add_typer(crawl_app, name="crawl")
+store_app = typer.Typer(no_args_is_help=True, help="Move the index between store backends.")
+app.add_typer(store_app, name="store")
+bot_app = typer.Typer(no_args_is_help=True, help="The Telegram webhook bot.")
+app.add_typer(bot_app, name="bot")
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 
@@ -167,9 +192,29 @@ def _live_fetcher(settings: Settings) -> FetcherRouter:
     return FetcherRouter({"kolzchut.org.il": _wiki(settings)}, web)
 
 
+def _qdrant(ctx: Context) -> QdrantStore:
+    secrets = ctx.secrets
+    client = QdrantClient(
+        url=secrets.require("QDRANT_URL"),
+        api_key=secrets.require("QDRANT_API_KEY"),
+        timeout=ctx.settings.store.timeout_s,
+    )
+    return QdrantStore(client)
+
+
+def _real_store(ctx: Context) -> VectorStore:
+    if ctx.settings.store.backend == "qdrant":
+        return _qdrant(ctx)
+    return ChromaStore(ctx.settings.paths.chroma_dir)
+
+
+def _firestore(ctx: Context) -> FirestoreClient:
+    return FirestoreClient(project=ctx.secrets.require("GOOGLE_CLOUD_PROJECT"))
+
+
 def _store(ctx: Context, embedder: Embedder) -> VectorStore:
     if not ctx.dry_run:
-        return ChromaStore(ctx.settings.paths.chroma_dir)
+        return _real_store(ctx)
     store = InMemoryVectorStore()
     fixtures = FixtureFetcher(ctx.settings.paths.fixtures_dir)
     setup = CostGuard(math.inf, ctx.prices, RunRecorder("setup", True, math.inf))
@@ -228,7 +273,7 @@ def _config_errors() -> Iterator[None]:
     except (ConfigError, ManifestError) as exc:
         typer.echo(f"שגיאת תצורה: {exc}", err=True)
         raise typer.Exit(1) from exc
-    except FetchError as exc:
+    except (FetchError, StoreError) as exc:
         typer.echo(f"שגיאה: {exc}", err=True)
         raise typer.Exit(1) from exc
 
@@ -255,7 +300,7 @@ def ingest(
     with _config_errors():
         ctx = _context("ingest", dry_run, max_usd)
         embedder = _embedder(ctx)
-        store = InMemoryVectorStore() if dry_run else ChromaStore(ctx.settings.paths.chroma_dir)
+        store = InMemoryVectorStore() if dry_run else _real_store(ctx)
     fetcher: Fetcher
     if from_fixtures is not None or dry_run:
         fixtures = FixtureFetcher(from_fixtures or ctx.settings.paths.fixtures_dir)
@@ -368,12 +413,25 @@ def eval_(
 @app.command()
 def cost(
     days: Annotated[int, typer.Option("--days", min=1, help="How many days back to sum.")] = 7,
+    source: Annotated[
+        str,
+        typer.Option(
+            "--source",
+            click_type=click.Choice(["local", "firestore"]),
+            help="runs/ or the Firestore runs collection.",
+        ),
+    ] = "local",
 ) -> None:
-    """Sum the run records under runs/ by command and model; makes no calls, writes nothing."""
+    """Sum the run records by command and model; makes no model calls, writes nothing."""
     with _config_errors():
-        settings = load_settings(Path.cwd())
+        ctx = _context("cost", True, None)
+        sink: RunRecordSink = (
+            FirestoreRunSink(_firestore(ctx))
+            if source == "firestore"
+            else LocalRunSink(ctx.settings.paths.runs_dir)
+        )
     since = datetime.now() - timedelta(days=days)
-    typer.echo(format_cost(summarize_runs(settings.paths.runs_dir, since)))
+    typer.echo(format_cost(summarize_runs(sink, since)))
 
 
 @crawl_app.command("plan")
@@ -404,7 +462,7 @@ def crawl_run(
         deps = CrawlDeps(
             wiki,
             _embedder(ctx),
-            ChromaStore(paths.chroma_dir),
+            _real_store(ctx),
             ctx.guard,
             paths.manifest,
             ctx.settings.chunk,
@@ -427,3 +485,98 @@ def crawl_run(
     outcome = guarded(ctx.recorder, action)
     _finish(ctx, outcome, [])
     raise typer.Exit(outcome.exit_code)
+
+
+@store_app.command("migrate")
+def store_migrate(
+    source: Annotated[
+        str, typer.Option("--from", click_type=click.Choice(["chroma"]), help="Source store.")
+    ] = "chroma",
+    target: Annotated[
+        str, typer.Option("--to", click_type=click.Choice(["qdrant"]), help="Target store.")
+    ] = "qdrant",
+) -> None:
+    """Copy every chunk from the local Chroma folder to Qdrant, then check the counts."""
+    with _config_errors():
+        ctx = _context("migrate", True, None)
+        copied = migrate(ChromaStore(ctx.settings.paths.chroma_dir), _qdrant(ctx))
+    typer.echo(f"הועתקו {copied} מקטעים מ-{source} ל-{target}.")
+
+
+def _bot_deps(
+    ctx: Context,
+    telegram: TelegramClient,
+    sessions: SessionStore,
+    sink: RunRecordSink,
+    secret: str,
+    allowed: frozenset[int],
+) -> BotDeps:
+    graph = _graph_deps(ctx, _deps(ctx, None), "haiku", "haiku")
+    secrets = tuple(ctx.secrets.values())
+    bot = ctx.settings.bot
+    return BotDeps(
+        graph, ctx.prices, bot, telegram, sessions, sink, secret, allowed, secrets, ctx.dry_run
+    )
+
+
+def _local_bot(ctx: Context, sent: SendLog, secret: str) -> BotDeps:
+    ttl = timedelta(minutes=ctx.settings.bot.session_ttl_minutes)
+    sink = LocalRunSink(ctx.settings.paths.runs_dir)
+    sessions = InMemorySessionStore(ttl)
+    return _bot_deps(ctx, recording_client(sent), sessions, sink, secret, frozenset())
+
+
+def production_app() -> FastAPI:
+    ctx = _context("bot", False, None)
+    # The container has no Chroma folder, so the deployed webhook always reads Qdrant.
+    store = ctx.settings.store.model_copy(update={"backend": "qdrant"})
+    ctx = replace(ctx, settings=ctx.settings.model_copy(update={"store": store}))
+    secrets, bot = ctx.secrets, ctx.settings.bot
+    http = httpx.Client(timeout=ctx.settings.answer.timeout_s)
+    telegram = TelegramClient(http, secrets.require("TELEGRAM_BOT_TOKEN"))
+    db = _firestore(ctx)
+    sessions = FirestoreSessionStore(db, timedelta(minutes=bot.session_ttl_minutes))
+    secret, allowed = secrets.require("TELEGRAM_WEBHOOK_SECRET"), secrets.allowed_chat_ids()
+    return create_app(_bot_deps(ctx, telegram, sessions, FirestoreRunSink(db), secret, allowed))
+
+
+@bot_app.command("serve")
+def bot_serve(
+    dry_run: DryRun = False,
+    port: Annotated[int, typer.Option("--port", help="Port to listen on.")] = 8080,
+) -> None:
+    """Run the webhook app; --dry-run uses the fakes and prints Telegram calls instead."""
+    with _config_errors():
+        if dry_run:
+            ctx = _context("bot", True, None)
+            secret = ctx.secrets.telegram_webhook_secret or "dry-run"
+            server = create_app(_local_bot(ctx, lambda m, body: typer.echo(f"{m}: {body}"), secret))
+            typer.echo(f"POST http://127.0.0.1:{port}{webhook_path(secret)}")
+        else:
+            server = production_app()
+    uvicorn.run(server, host="127.0.0.1" if dry_run else "0.0.0.0", port=port)
+
+
+@bot_app.command("simulate")
+def bot_simulate(
+    text: Annotated[str, typer.Argument(help="The message text, in Hebrew.")],
+    dry_run: DryRun = False,
+    chat_id: Annotated[int, typer.Option("--chat-id", help="Synthetic chat id.")] = 1,
+) -> None:
+    """Post one synthetic update into the app in-process and print the reply HTML."""
+    secret = "simulate"
+    sent: list[tuple[str, dict[str, object]]] = []
+    with _config_errors():
+        ctx = _context("bot", dry_run, None)
+        deps = _local_bot(ctx, lambda m, body: sent.append((m, body)), secret)
+    inline = deps.settings.model_copy(update={"process_inline": True})
+    with TestClient(create_app(replace(deps, settings=inline))) as client:
+        response = client.post(
+            webhook_path(secret),
+            json=synthetic_update(chat_id, text),
+            headers={SECRET_HEADER: secret},
+        )
+    replies = [str(body["text"]) for method, body in sent if method == "sendMessage"]
+    for reply in replies:
+        typer.echo(reply)
+    raise typer.Exit(0 if response.status_code == 200 and replies else 1)

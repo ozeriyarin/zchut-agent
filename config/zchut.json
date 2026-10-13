@@ -43,6 +43,13 @@
     "fetch_delay_s": 5,
     "tokens_per_article": 3000
   },
+  "store": {"backend": "chroma", "timeout_s": 30},
+  "bot": {
+    "max_usd_per_message": 0.08,
+    "max_usd_per_day": 1.0,
+    "session_ttl_minutes": 30,
+    "process_inline": false
+  },
   "paths": {
     "runs_dir": "runs",
     "raw_dir": "data/raw",

@@ -28,7 +28,7 @@ from zchut.run.ask import run_ask
 from zchut.run.converse import run_conversation
 from zchut.run.cost_guard import BudgetExceeded, cost_usd
 from zchut.run.cost_report import summarize_runs
-from zchut.run.records import question_hash
+from zchut.run.records import LocalRunSink, question_hash
 from zchut.types import CallRecord, RunRecord, Usage
 
 runner = CliRunner()
@@ -259,7 +259,7 @@ def test_criterion_7_no_verify_path_and_cost_command(
     (runs / "c-eval-report.json").write_text("{}", encoding="utf-8")
     (runs / "e-broken.json").write_text("{", encoding="utf-8")
 
-    summary = summarize_runs(runs, now - timedelta(days=7))
+    summary = summarize_runs(LocalRunSink(runs), now - timedelta(days=7))
     assert {k: (t.count, round(t.cost_usd, 6)) for k, t in summary.by_command.items()} == {
         "ask": (2, 0.00301),
         "eval": (1, 0.0001),

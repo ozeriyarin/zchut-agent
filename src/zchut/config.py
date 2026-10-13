@@ -4,6 +4,7 @@ import json
 import os
 from collections.abc import Mapping, MutableMapping
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -84,6 +85,18 @@ class PathSettings(BaseModel):
     verifier_labels: Path = Path("eval/verifier_labels.json")
 
 
+class StoreSettings(BaseModel):
+    backend: Literal["chroma", "qdrant"] = "chroma"
+    timeout_s: int = Field(default=30, gt=0)
+
+
+class BotSettings(BaseModel):
+    max_usd_per_message: float = Field(default=0.08, ge=0)
+    max_usd_per_day: float = Field(default=1.0, ge=0)
+    session_ttl_minutes: int = Field(default=30, gt=0)
+    process_inline: bool = False
+
+
 class Settings(BaseModel):
     sources: list[str]
     chunk: ChunkSettings
@@ -96,6 +109,8 @@ class Settings(BaseModel):
     graph: GraphSettings
     crawl: CrawlSettings
     paths: PathSettings
+    store: StoreSettings = StoreSettings()
+    bot: BotSettings = BotSettings()
 
 
 class ModelPrice(BaseModel):
@@ -123,6 +138,12 @@ class Secrets(BaseModel):
     openrouter_api_key: str | None = None
     vllm_url: str | None = None
     vllm_api_key: str | None = None
+    telegram_bot_token: str | None = None
+    telegram_webhook_secret: str | None = None
+    telegram_allowed_chat_ids: str | None = None
+    qdrant_url: str | None = None
+    qdrant_api_key: str | None = None
+    google_cloud_project: str | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Secrets:
@@ -133,7 +154,26 @@ class Secrets(BaseModel):
             openrouter_api_key=env.get("OPENROUTER_API_KEY") or None,
             vllm_url=env.get("ZCHUT_VLLM_URL") or None,
             vllm_api_key=env.get("ZCHUT_VLLM_API_KEY") or None,
+            telegram_bot_token=env.get("TELEGRAM_BOT_TOKEN") or None,
+            telegram_webhook_secret=env.get("TELEGRAM_WEBHOOK_SECRET") or None,
+            telegram_allowed_chat_ids=env.get("TELEGRAM_ALLOWED_CHAT_IDS") or None,
+            qdrant_url=env.get("QDRANT_URL") or None,
+            qdrant_api_key=env.get("QDRANT_API_KEY") or None,
+            google_cloud_project=env.get("GOOGLE_CLOUD_PROJECT") or None,
         )
+
+    def require(self, name: str) -> str:
+        value: str | None = getattr(self, name.lower())
+        if not value:
+            raise ConfigError(f"missing environment variable {name}")
+        return value
+
+    def allowed_chat_ids(self) -> frozenset[int]:
+        raw = [p.strip() for p in (self.telegram_allowed_chat_ids or "").split(",")]
+        try:
+            return frozenset(int(p) for p in raw if p)
+        except ValueError as exc:
+            raise ConfigError("TELEGRAM_ALLOWED_CHAT_IDS must be comma-separated chat ids") from exc
 
     def require_voyage(self) -> str:
         if not self.voyage_api_key:
@@ -163,6 +203,9 @@ class Secrets(BaseModel):
             self.anthropic_api_key,
             self.openrouter_api_key,
             self.vllm_api_key,
+            self.telegram_bot_token,
+            self.telegram_webhook_secret,
+            self.qdrant_api_key,
         ]
         return [k for k in keys if k]
 
@@ -196,6 +239,12 @@ SECRET_NAMES = frozenset(
         "OPENROUTER_API_KEY",
         "ZCHUT_VLLM_URL",
         "ZCHUT_VLLM_API_KEY",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_WEBHOOK_SECRET",
+        "TELEGRAM_ALLOWED_CHAT_IDS",
+        "QDRANT_URL",
+        "QDRANT_API_KEY",
+        "GOOGLE_CLOUD_PROJECT",
     }
 )
 

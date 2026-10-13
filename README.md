@@ -6,10 +6,12 @@ answer carries numbered citations `[1]`, `[2]` that link to the source pages and
 dates; when retrieval is too weak to ground an answer it says so in one fixed sentence instead of
 guessing. Every AI call is recorded (model, tokens, cost, latency) under `runs/`.
 
-**Status: v3 shipped** (full כל זכות corpus: incremental, resumable crawl; see "Full corpus").
+**Status: v4 shipped** (Telegram webhook on Cloud Run, Qdrant store, Firestore sessions; see
+"Telegram").
 Specs: `agent-os/specs/2026-10-13-zchut-v1-ingest-ask/spec.md`,
 `agent-os/specs/2026-10-13-zchut-v2-conversation/spec.md`,
-`agent-os/specs/2026-10-13-zchut-v3-full-corpus/spec.md`.
+`agent-os/specs/2026-10-13-zchut-v3-full-corpus/spec.md`,
+`agent-os/specs/2026-10-13-zchut-v4-telegram/spec.md`.
 
 The project is spec-driven (Agent OS v3): product docs in `agent-os/product/`, coding standards in
 `agent-os/standards/`, one spec per version in `agent-os/specs/`. Every acceptance criterion has a
@@ -19,7 +21,9 @@ test whose name quotes it, and `tests/test_spec_coverage.py` fails when one is m
 
 - Python 3.11, Typer CLI, ruff + mypy strict, pytest (offline only).
 - LlamaIndex for ingestion and retrieval; Chroma as the local vector store (v1), Qdrant Cloud free
-  tier later (v4).
+  tier for the deployed bot (v4).
+- FastAPI + uvicorn for the Telegram webhook on Google Cloud Run; Firestore for sessions and
+  cloud run records (v4).
 - Voyage AI `voyage-3.5-lite` embeddings. Rate limits: Voyage's free tier (no payment method)
   allows about 3 requests and 10,000 tokens per minute, so the embedder batches chunks under
   `embed.max_batch_tokens`, paces requests `embed.min_interval_s` (20 s) apart and backs off on
@@ -221,6 +225,42 @@ markers the model still emits and collapses blank lines; the run record counts t
 text, `<a href>` sources with their dates, `<b>` header) from the same `Answer`. The verifier
 prompt and the Jev criteria say what is unsupported (no passage states the claim, or a number
 or date differs) and what is not (paraphrase, omission, a cautious "it depends").
+
+## Telegram
+
+The bot runs the same conversation graph behind a Telegram webhook on Google Cloud Run (scales to
+zero, `--max-instances 1`); the corpus lives in Qdrant Cloud's free tier and sessions in Firestore.
+Spec: `agent-os/specs/2026-10-13-zchut-v4-telegram/spec.md`; deploy steps: `deploy/cloud-run.md`
+and `scripts/deploy.ps1` (the owner runs them).
+
+- `POST /telegram/<hook id>` (the first 16 hex chars of `sha256(TELEGRAM_WEBHOOK_SECRET)`) checks
+  the `X-Telegram-Bot-Api-Secret-Token` header (403 otherwise), answers 200 and handles the update
+  in a background task: `sendChatAction typing`, then the graph, then one `sendMessage` with the
+  `render_html` answer (HTML, link previews off).
+- `/start` and `/help` reply with a fixed Hebrew text (topics, sources, CC BY-SA line, "information,
+  not legal advice") and make no model call. Chats outside `TELEGRAM_ALLOWED_CHAT_IDS` (empty =
+  everyone) get one refusal line; the record counts them as `bot_event: denied`.
+- A clarification is stored in the session (`pending_clarification`); the next message is taken as
+  the reply and the graph continues from there. Sessions (`sessions/<chat_id>`: last 6 turns, the
+  pending question, `updated_at`, `expires_at`) expire 30 minutes after the last message through a
+  Firestore TTL policy, and an expired session is never read back.
+- Budget: `bot.max_usd_per_message` (0.08) per message and `bot.max_usd_per_day` (1.00) summed
+  from today's records; over the daily cap the bot replies "התקציב של היום נוצל" with no embed or
+  model call.
+- Records go to the Firestore `runs` collection with the graph path, tier, cost and hashes only:
+  no chat id, user name, message text or history. `zchut cost --source firestore` sums them.
+- Store: `store.backend` in `config/zchut.json` is `chroma` (local) or `qdrant` (`QDRANT_URL`,
+  `QDRANT_API_KEY`; collection `zchut`, cosine, 1024 dims). `zchut store migrate --from chroma --to
+  qdrant` copies the local index and fails when the counts differ. The webhook always reads Qdrant.
+
+```bash
+zchut bot simulate "מי זכאי לדמי אבטלה?" --dry-run   # one synthetic update in-process, prints the HTML
+zchut bot serve --dry-run --port 8080                 # local webhook with fakes; prints Telegram calls
+zchut bot serve                                       # production wiring (Firestore, Qdrant, Telegram)
+```
+
+New environment variables: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`,
+`TELEGRAM_ALLOWED_CHAT_IDS`, `QDRANT_URL`, `QDRANT_API_KEY`, `GOOGLE_CLOUD_PROJECT`.
 
 ## Budget rules
 
