@@ -30,8 +30,8 @@
     "jev": {
       "instructions": "Decide whether every claim in state.draft is supported by state.sources.",
       "criteria": {
-        "supported": "Every factual claim in the draft is stated in at least one source chunk.",
-        "unsupported": "At least one claim in the draft is missing from or contradicts the sources."
+        "supported": "Every factual claim in the draft is stated in at least one source chunk. A paraphrase, an omitted detail or a cautious 'it depends' is still supported.",
+        "unsupported": "At least one claim in the draft has no source chunk that states it, or a number, amount, date or period in it differs from the source."
       }
     }
   },

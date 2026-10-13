@@ -10,11 +10,12 @@ from typer.testing import CliRunner
 from conftest import AVTALA, PENSIA, ROOT, TAX, make_deps, make_graph_deps, make_guard
 from zchut.answer.model import FakeAnswerModel
 from zchut.cli import app
-from zchut.config import ConfigError, Prices, load_settings
+from zchut.config import ConfigError, Prices, Settings, load_settings
+from zchut.eval.labels import VerifierLabel, load_labels, verifier_accuracy
 from zchut.eval.metrics import citation_precision, hit_at_k, rate
 from zchut.eval.questions import EvalQuestion, load_questions
-from zchut.eval.run_eval import _calibration_line, calibrate, run_eval
-from zchut.graph.verify import FakeVerifier
+from zchut.eval.run_eval import _calibration_line, calibrate, format_table, run_eval
+from zchut.graph.verify import VERIFY_SCHEMA, VERIFY_SYSTEM, FakeVerifier
 from zchut.index.embedder import FAKE_EMBED_MODEL, FakeEmbedder, InputType
 from zchut.index.store import InMemoryVectorStore
 from zchut.run.ask import AskDeps
@@ -232,3 +233,101 @@ def test_graph_eval_costs_add_up_per_question(
     assert sum(r.cost_usd for r in rows) + embed == pytest.approx(record.total_cost_usd)
     assert reports[0].mean_cost_usd > 0 and reports[0].verification_pass_rate == 1.0
     assert reports[1].verification_pass_rate is None and reports[1].escalation_rate == 0.0
+
+
+def _column(table: str, name: str) -> list[str]:
+    head, _, *rows = table.splitlines()
+    index = [c.strip() for c in head.split("|")].index(name)
+    return [[c.strip() for c in row.split("|")][index] for row in rows]
+
+
+def _table(output: str) -> str:
+    return "\n".join(line for line in output.splitlines() if line.startswith("|"))
+
+
+def test_criterion_4_v4a_verifier_accuracy_column(cli_root: Path) -> None:
+    """criterion 4: "With `eval/verifier_labels.json` present, the eval table has a `verifier accuracy` column per verifier computed against the labels; without the file the column is `—`." """
+    path = cli_root / "eval" / "verifier_labels.json"
+    assert load_labels(path) == {}
+    shipped = runner.invoke(app, ["eval", "--dry-run"])
+    assert shipped.exit_code == 0, shipped.output
+    assert _column(_table(shipped.output), "verifier accuracy") == ["—"]
+    path.unlink()
+    missing = runner.invoke(app, ["eval", "--dry-run"])
+    assert _column(_table(missing.output), "verifier accuracy") == ["—"]
+
+    questions = load_questions(ROOT / "eval" / "questions.json")
+    labels = {
+        q.id: {"label": "supported" if n % 2 else "unsupported", "reason": "נבדק מול הקטע"}
+        for n, q in enumerate(questions)
+    }
+    path.write_text(json.dumps({"version": 1, "labels": labels}), "utf-8")
+    labelled = runner.invoke(app, ["eval", "--dry-run"])
+    assert labelled.exit_code == 0, labelled.output
+    report_path = labelled.output.split("דוח הערכה: ", 1)[1].splitlines()[0]
+    report = json.loads(Path(report_path).read_text("utf-8"))
+    judged = [
+        r["verified"] == (labels[r["id"]]["label"] == "supported")
+        for r in report["rows"]
+        if r["verified"] is not None
+    ]
+    assert judged and report["verifier_accuracy"] == pytest.approx(sum(judged) / len(judged))
+    cell = f"{report['verifier_accuracy']:.2f}"
+    assert _column(_table(labelled.output), "verifier accuracy") == [cell]
+
+
+def _label(label: str) -> VerifierLabel:
+    return VerifierLabel.model_validate({"label": label, "reason": "סיבה"})
+
+
+@pytest.mark.parametrize(
+    ("verdicts", "labels", "accuracy"),
+    [
+        ({"q1": True, "q2": False}, {"q1": "supported", "q2": "supported"}, 0.5),
+        ({"q1": False, "q2": True}, {"q1": "unsupported"}, 1.0),
+        ({"q1": True}, {}, None),
+        ({"q1": True}, {"q9": "supported"}, None),
+    ],
+)
+def test_verifier_accuracy(
+    verdicts: dict[str, bool], labels: dict[str, str], accuracy: float | None
+) -> None:
+    assert verifier_accuracy(verdicts, {k: _label(v) for k, v in labels.items()}) == accuracy
+
+
+def test_load_labels_rejects_unknown_label_and_empty_reason(tmp_path: Path) -> None:
+    path = tmp_path / "labels.json"
+    for row in ({"label": "maybe", "reason": "x"}, {"label": "supported", "reason": ""}):
+        path.write_text(json.dumps({"version": 1, "labels": {"q1": row}}), "utf-8")
+        with pytest.raises(ConfigError, match="invalid"):
+            load_labels(path)
+
+
+def test_verifier_wording_names_what_is_not_unsupported(settings: Settings) -> None:
+    assert "ניסוח במילים אחרות, השמטת פרטים ואמירה זהירה" in VERIFY_SYSTEM
+    assert "מספר, סכום, תאריך או פרק זמן" in VERIFY_SYSTEM
+    criteria = settings.graph.jev.criteria
+    assert "paraphrase" in criteria.supported and "differs from the source" in criteria.unsupported
+    assert VERIFY_SCHEMA["required"] == ["supported", "unsupported_claims"]
+
+
+def test_criterion_5_v4a_markdown_free_per_tier(
+    fixture_store: InMemoryVectorStore, priced: Prices
+) -> None:
+    """criterion 5: "The eval reports `markdown_free` per tier." """
+    questions = load_questions(ROOT / "eval" / "questions.json")[:4]
+    marked = FakeAnswerModel(canned="**תשובה** [1].")
+    combos = [
+        make_graph_deps(fixture_store, FakeAnswerModel(), 0.3, FakeVerifier()),
+        make_graph_deps(fixture_store, marked, 0.3, FakeVerifier(), "qwen-openrouter"),
+    ]
+    outcome, reports = run_eval(questions, combos[0].ask, make_guard(priced), combos)
+    assert outcome.exit_code == 0
+    assert [(r.tier, r.markdown_free) for r in reports] == [
+        ("haiku", 1.0),
+        ("qwen-openrouter", 0.0),
+    ]
+    assert all(row.markdown_stripped == 2 for row in reports[1].rows)
+    assert _column(format_table(reports), "markdown free") == ["1.00", "0.00"]
+    retrieval = run_eval(questions, combos[0].ask, make_guard(priced), [])[1][0]
+    assert retrieval.markdown_free is None

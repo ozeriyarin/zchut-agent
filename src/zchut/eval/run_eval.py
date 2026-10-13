@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from statistics import fmean, median
 
 from pydantic import BaseModel
 
 from zchut.answer.refusal import should_refuse
+from zchut.eval.labels import VerifierLabel, verifier_accuracy
 from zchut.eval.metrics import citation_precision, hit_at_k, rate
 from zchut.eval.questions import EvalQuestion
 from zchut.graph.build import GraphDeps, converse
@@ -29,6 +30,7 @@ class EvalRow(BaseModel):
     path: list[str] = []
     verified: bool | None = None
     escalated: bool = False
+    markdown_stripped: int | None = None
     cost_usd: float = 0.0
     latency_ms: int = 0
 
@@ -52,7 +54,9 @@ class EvalReport(BaseModel):
     refusal_rate: float
     expected_refusal_rate: float
     verification_pass_rate: float | None = None
+    verifier_accuracy: float | None = None
     escalation_rate: float | None = None
+    markdown_free: float | None = None
     mean_cost_usd: float = 0.0
     mean_latency_ms: float = 0.0
     calibration: Calibration
@@ -74,10 +78,15 @@ def calibrate(answerable: Sequence[float], refusal: Sequence[float]) -> Calibrat
     )
 
 
-def build_report(rows: Sequence[EvalRow], combo: GraphDeps | None = None) -> EvalReport:
+def build_report(
+    rows: Sequence[EvalRow],
+    combo: GraphDeps | None = None,
+    labels: Mapping[str, VerifierLabel] | None = None,
+) -> EvalReport:
     hits = [r.hit for r in rows if r.hit is not None]
     scored = [(r, r.best_score) for r in rows if r.best_score is not None]
-    verified = [r.verified for r in rows if r.verified is not None]
+    verdicts = {r.id: r.verified for r in rows if r.verified is not None}
+    drafts = [r.markdown_stripped == 0 for r in rows if r.markdown_stripped is not None]
     verifier = combo.verifier if combo else None
     return EvalReport(
         questions=len(rows),
@@ -90,8 +99,10 @@ def build_report(rows: Sequence[EvalRow], combo: GraphDeps | None = None) -> Eva
         ),
         refusal_rate=rate([r.refused for r in rows]),
         expected_refusal_rate=rate([r.expect_refusal for r in rows]),
-        verification_pass_rate=rate(verified) if verified else None,
+        verification_pass_rate=rate(list(verdicts.values())) if verdicts else None,
+        verifier_accuracy=verifier_accuracy(verdicts, labels or {}),
         escalation_rate=None if combo is None else rate([r.escalated for r in rows]),
+        markdown_free=rate(drafts) if drafts else None,
         mean_cost_usd=fmean([r.cost_usd for r in rows]) if rows else 0.0,
         mean_latency_ms=fmean([r.latency_ms for r in rows]) if rows else 0.0,
         calibration=calibrate(
@@ -134,8 +145,9 @@ def _calibration_line(c: Calibration) -> str:
 def format_table(reports: Sequence[EvalReport]) -> str:
     lines = [
         "| tier | verifier | hit@3 | citation precision | refusal rate | verification pass rate"
-        " | escalation rate | cost / question (USD) | latency (ms) |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        " | verifier accuracy | escalation rate | markdown free | cost / question (USD)"
+        " | latency (ms) |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in reports:
         cells = [
@@ -145,7 +157,9 @@ def format_table(reports: Sequence[EvalReport]) -> str:
             _fmt(r.citation_precision),
             _fmt(r.refusal_rate),
             _fmt(r.verification_pass_rate),
+            _fmt(r.verifier_accuracy),
             _fmt(r.escalation_rate),
+            _fmt(r.markdown_free),
             f"{r.mean_cost_usd:.5f}",
             f"{r.mean_latency_ms:.0f}",
         ]
@@ -178,6 +192,7 @@ def _graph_row(q: EvalQuestion, hits: list[Hit], combo: GraphDeps, guard: CostGu
     state = converse(replace(combo, retriever=lambda _q, _g: hits), guard, q.question, [], None)
     latency_ms = int((time.perf_counter() - started) * 1000)
     shown = state.draft if state.escalation is None else None
+    drafted = state.draft if state.draft and not state.draft.refused else None
     if state.draft:
         record.dropped_citations += state.draft.dropped_citations
     return _row(
@@ -188,6 +203,7 @@ def _graph_row(q: EvalQuestion, hits: list[Hit], combo: GraphDeps, guard: CostGu
         path=state.path,
         verified=state.verified,
         escalated=state.escalation is not None,
+        markdown_stripped=drafted.markdown_stripped if drafted else None,
         cost_usd=sum(c.cost_usd for c in record.calls[before:]),
         latency_ms=latency_ms,
     )
@@ -198,6 +214,7 @@ def run_eval(
     deps: AskDeps,
     guard: CostGuard,
     combos: Sequence[GraphDeps],
+    labels: Mapping[str, VerifierLabel] | None = None,
 ) -> tuple[Outcome, list[EvalReport]]:
     reports: list[EvalReport] = []
 
@@ -208,7 +225,8 @@ def run_eval(
             rows = [_row(q, hits, should_refuse(hits, deps.min_score)) for q, hits in found]
             reports.append(build_report(rows))
         for combo in combos:
-            reports.append(build_report([_graph_row(q, h, combo, guard) for q, h in found], combo))
+            rows = [_graph_row(q, h, combo, guard) for q, h in found]
+            reports.append(build_report(rows, combo, labels))
         blocks = [format_report(r) for r in reports]
         return "\n\n".join([*blocks, format_table(reports)] if combos else blocks)
 

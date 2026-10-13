@@ -25,6 +25,7 @@ from zchut.config import (
     load_secrets,
     load_settings,
 )
+from zchut.eval.labels import load_labels
 from zchut.eval.questions import load_questions
 from zchut.eval.run_eval import format_table, run_eval
 from zchut.graph.build import GraphDeps, Reply
@@ -343,13 +344,14 @@ def eval_(
     with _config_errors():
         ctx = _context("eval", dry_run, max_usd)
         questions = load_questions(ctx.settings.paths.questions)
+        labels = load_labels(ctx.settings.paths.verifier_labels)
         deps = _deps(ctx, None)
         names = parse_choices(tiers, TIERS) if tiers else [tier]
         checks: list[str | None] = [None] if no_verify else [*parse_choices(verifiers, VERIFIERS)]
         combos = (
             [] if retrieval_only else [_graph_deps(ctx, deps, t, v) for t in names for v in checks]
         )
-    outcome, reports = run_eval(questions, deps, ctx.guard, combos)
+    outcome, reports = run_eval(questions, deps, ctx.guard, combos, labels)
     path = _finish(ctx, outcome, [])
     for report in reports:
         suffix = f"-{report.tier}-{report.verifier or 'none'}" if len(reports) > 1 else ""

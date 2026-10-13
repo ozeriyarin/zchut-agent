@@ -4,7 +4,7 @@ import re
 from collections.abc import Sequence
 
 from zchut.answer.prompt import format_date
-from zchut.types import Answer, Citation, Hit
+from zchut.types import Answer, Chunk, Citation, Hit
 
 ATTRIBUTION_LINE = (
     "התוכן מאתר כל-זכות (kolzchut.org.il) מוגש לפי רישיון Creative Commons ייחוס-שיתוף זהה 3.0 "
@@ -33,19 +33,29 @@ def resolve(text: str, hits: Sequence[Hit]) -> Answer:
     return Answer(text=cleaned, citations=citations, dropped_citations=dropped)
 
 
-def sources_block(citations: Sequence[Citation]) -> str:
-    if not citations:
-        return ""
+def source_groups(citations: Sequence[Citation]) -> list[tuple[str, Chunk]]:
     by_url: dict[str, list[Citation]] = {}
     for c in sorted(citations, key=lambda c: c.number):
         by_url.setdefault(c.chunk.url, []).append(c)
+    return [(", ".join(str(c.number) for c in g), g[0].chunk) for g in by_url.values()]
+
+
+def updated_suffix(chunk: Chunk) -> str:
+    updated = format_date(chunk.last_updated)
+    return f" (עודכן: {updated})" if updated else ""
+
+
+def needs_attribution(citations: Sequence[Citation]) -> bool:
+    return any(c.chunk.license == KOLZCHUT_LICENSE for c in citations)
+
+
+def sources_block(citations: Sequence[Citation]) -> str:
+    if not citations:
+        return ""
     lines = ["מקורות:"]
-    for url, group in by_url.items():
-        numbers = ", ".join(str(c.number) for c in group)
-        updated = format_date(group[0].chunk.last_updated)
-        suffix = f" (עודכן: {updated})" if updated else ""
-        lines.append(f"[{numbers}] {group[0].chunk.title} — {url}{suffix}")
-    if any(c.chunk.license == KOLZCHUT_LICENSE for c in citations):
+    for numbers, chunk in source_groups(citations):
+        lines.append(f"[{numbers}] {chunk.title} — {chunk.url}{updated_suffix(chunk)}")
+    if needs_attribution(citations):
         lines.append(ATTRIBUTION_LINE)
     return "\n".join(lines)
 

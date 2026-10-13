@@ -204,6 +204,24 @@ questions and the highest among refusal questions; set `retrieval.min_score` in
 `config/zchut.json` to the suggested midpoint it prints (if it reports overlap, no threshold
 separates them and retrieval needs work first).
 
+The table also has `markdown free` (share of drafts that needed no Markdown cleanup) and
+`verifier accuracy`: each verifier's verdicts scored against the owner's labels in
+`eval/verifier_labels.json` (`{"version": 1, "labels": {"q04": {"label": "supported", "reason":
+"..."}}}`); it reads `—` while no labels exist. The questions to label are listed in
+`eval/review/2026-10-13-verifier-disagreements.md`.
+
+## Prompt rules
+
+The answer prompt asks for plain Hebrew text with no Markdown (no `**`, `#`, bullets or tables),
+at most 6 lines before the sources block, numbers and dates as digits, no legal disclaimer (the
+escalation text carries it), one sentence saying what the passages do not contain followed by
+what they do say, and a final proofread. `clean_answer` strips any `**` and leading `#`/`-`/`*`
+markers the model still emits and collapses blank lines; the run record counts them as
+`markdown_stripped`. The CLI prints plain text; `render_html` builds Telegram HTML (escaped
+text, `<a href>` sources with their dates, `<b>` header) from the same `Answer`. The verifier
+prompt and the Jev criteria say what is unsupported (no passage states the claim, or a number
+or date differs) and what is not (paraphrase, omission, a cautious "it depends").
+
 ## Budget rules
 
 - Under 10 USD per month, all providers together. Anthropic has a console hard limit; Voyage and

@@ -19,6 +19,7 @@ def run_conversation(
         record.retrieved = [RetrievedRef(chunk_id=h.chunk.id, score=h.score) for h in state.hits]
         record.refused = "refuse" in state.path
         record.dropped_citations = state.draft.dropped_citations if state.draft else 0
+        record.markdown_stripped = state.draft.markdown_stripped if state.draft else 0
         record.graph = GraphRecord(
             path=state.path,
             tier=deps.tier,

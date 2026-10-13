@@ -81,6 +81,7 @@ class PathSettings(BaseModel):
     questions: Path
     offices: Path = Path("config/offices.json")
     manifest: Path = Path("data/manifest.json")
+    verifier_labels: Path = Path("eval/verifier_labels.json")
 
 
 class Settings(BaseModel):

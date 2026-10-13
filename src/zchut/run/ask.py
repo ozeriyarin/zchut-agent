@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from zchut.answer.citations import render, resolve
 from zchut.answer.model import AnswerModel
 from zchut.answer.prompt import build_prompt
 from zchut.answer.refusal import REFUSAL_SENTENCE, should_refuse
+from zchut.answer.render import clean_answer
 from zchut.index.embedder import Embedder
 from zchut.index.store import VectorStore
 from zchut.run.cost_guard import CostGuard, Outcome, guarded
@@ -30,7 +31,8 @@ def retrieve(question: str, deps: AskDeps, guard: CostGuard) -> list[Hit]:
 def respond(question: str, hits: list[Hit], deps: AskDeps, guard: CostGuard) -> Answer:
     if should_refuse(hits, deps.min_score):
         return Answer(text=REFUSAL_SENTENCE, citations=(), refused=True)
-    return resolve(guard.answer(deps.model, build_prompt(question, hits)), hits)
+    text, stripped = clean_answer(guard.answer(deps.model, build_prompt(question, hits)))
+    return replace(resolve(text, hits), markdown_stripped=stripped)
 
 
 def run_ask(question: str, deps: AskDeps, guard: CostGuard) -> Outcome:
@@ -43,6 +45,7 @@ def run_ask(question: str, deps: AskDeps, guard: CostGuard) -> Outcome:
         answer = respond(question, hits, deps, guard)
         record.refused = answer.refused
         record.dropped_citations = answer.dropped_citations
+        record.markdown_stripped = answer.markdown_stripped
         return answer.text if answer.refused else render(answer)
 
     return guarded(guard.recorder, action)

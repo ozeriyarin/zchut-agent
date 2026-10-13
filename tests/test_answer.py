@@ -8,18 +8,29 @@ import httpx
 import pytest
 from typer.testing import CliRunner
 
-from conftest import AVTALA, TAX, make_deps, make_guard
+from conftest import AVTALA, TAX, make_deps, make_graph_deps, make_guard
 from zchut.answer.citations import ATTRIBUTION_LINE, render, resolve, sources_block
 from zchut.answer.model import FakeAnswerModel, HaikuAnswerModel
 from zchut.answer.prompt import SYSTEM_PROMPT, build_prompt, format_date
 from zchut.answer.refusal import REFUSAL_SENTENCE, should_refuse
+from zchut.answer.render import clean_answer, render_html
 from zchut.cli import app
 from zchut.config import Prices
+from zchut.graph.verify import FakeVerifier
 from zchut.index.store import InMemoryVectorStore
 from zchut.run.ask import run_ask
+from zchut.run.converse import run_conversation
 from zchut.types import Chunk, Hit
 
 runner = CliRunner()
+REGISTER = "מה צריך להביא לרישום בלשכת התעסוקה?"
+REGISTER_DRY_RUN = (
+    "תעודת זהות עם ספח [1]. כדי לקבל דמי אבטלה יש להירשם כדורש עבודה בלשכת שירות התעסוקה כבר "
+    "ביום הראשון לאבטלה, או להירשם באתר שירות התעסוקה ולהגיע ללשכה במועד שנקבע [2].\n\n"
+    "מקורות:\n"
+    f"[1, 2] דמי אבטלה — {AVTALA} (עודכן: 12.8.2026)\n"
+    f"{ATTRIBUTION_LINE}\n"
+)
 
 
 def hit(n: int, url: str = AVTALA, updated: str | None = "2026-08-12", score: float = 0.5) -> Hit:
@@ -175,3 +186,71 @@ def test_haiku_model_calls_messages_api_with_stubbed_transport() -> None:
         300,
         SYSTEM_PROMPT,
     )
+
+
+@pytest.mark.parametrize(
+    ("raw", "clean", "removed"),
+    [
+        ("**חשוב:** צריך תעודת זהות [1].", "חשוב: צריך תעודת זהות [1].", 2),
+        ("## כותרת\nטקסט [1].", "כותרת\nטקסט [1].", 1),
+        ("- א [1]\n  * ב [2]\n• ג [1, 2]", "א [1]\nב [2]\nג [1, 2]", 3),
+        ("א [1].\n\n\n  \nב [2].\n\n", "א [1].\n\nב [2].", 0),
+        ("ירידה של -5 [1] ו*כוכבית* ו-#תג.", "ירידה של -5 [1] ו*כוכבית* ו-#תג.", 0),
+    ],
+    ids=["bold", "heading", "bullets", "blank-lines", "inline-markers-kept"],
+)
+def test_clean_answer(raw: str, clean: str, removed: int) -> None:
+    assert clean_answer(raw) == (clean, removed)
+
+
+def test_criterion_1_v4a_clean_answer_counted_in_record(
+    fixture_store: InMemoryVectorStore, priced: Prices
+) -> None:
+    """criterion 1: "`clean_answer` removes `**`, leading `#`/`-`/`*` markers and collapses blank lines, leaves `[n]` citations intact, and the record counts what it removed." """
+    canned = "## תשובה\n\n\n**צריך** תעודת זהות [1].\n- ופרטי בנק [2]."
+    guard = make_guard(priced)
+    outcome = run_ask(REGISTER, make_deps(fixture_store, FakeAnswerModel(canned), 0.3), guard)
+    assert outcome.output.split("\n\nמקורות:\n")[0] == (
+        "תשובה\n\nצריך תעודת זהות [1].\nופרטי בנק [2]."
+    )
+    assert guard.recorder.record.markdown_stripped == 4
+
+    guard = make_guard(priced)
+    deps = make_graph_deps(fixture_store, FakeAnswerModel(canned), 0.3, FakeVerifier())
+    assert run_conversation(REGISTER, [], deps, guard, None).exit_code == 0
+    assert guard.recorder.record.markdown_stripped == 4
+
+
+def test_criterion_2_v4a_render_html_and_unchanged_cli_text(cli_root: Path) -> None:
+    """criterion 2: "`render_html` escapes `<`, `>`, `&` in the text, renders each source as an `<a href>` with its date, and the plain-text CLI output is unchanged for the fixture question." """
+    answer = resolve("פחות מ<5 & יותר מ>2 [1] ועוד [2].", [hit(1), hit(2, TAX, None)])
+    assert render_html(answer).splitlines() == [
+        "פחות מ&lt;5 &amp; יותר מ&gt;2 [1] ועוד [2].",
+        "",
+        "<b>מקורות:</b>",
+        f'[1] <a href="{AVTALA}">כותרת 1</a> (עודכן: 12.8.2026)',
+        f'[2] <a href="{TAX}">כותרת 2</a>',
+        ATTRIBUTION_LINE,
+    ]
+    assert render(answer).startswith("פחות מ<5 & יותר מ>2 [1] ועוד [2].\n\nמקורות:\n")
+    assert render_html(resolve("א < ב.", [hit(1)])) == "א &lt; ב."
+
+    result = runner.invoke(app, ["ask", REGISTER, "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert result.output.split("רשומת ריצה:")[0] == REGISTER_DRY_RUN
+
+
+def test_criterion_3_v4a_prompt_rules_and_markdown_free_dry_run(cli_root: Path) -> None:
+    """criterion 3: "The answer prompt contains the plain-text, 6-line and "say what is missing" rules, and the fake-model dry run output has no Markdown markers." """
+    for rule in (
+        "כתוב טקסט רגיל בלבד, בלי Markdown",
+        "כתוב לכל היותר 6 שורות",
+        "אם הקטעים אינם מכילים את הפרט שנשאל, אמור זאת במשפט אחד ואז כתוב מה הם כן אומרים",
+    ):
+        assert rule in SYSTEM_PROMPT
+    assert "ייעוץ משפטי" not in SYSTEM_PROMPT
+    result = runner.invoke(app, ["ask", REGISTER, "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert clean_answer(result.output)[1] == 0
+    record = json.loads(next((cli_root / "runs").glob("*-ask.json")).read_text("utf-8"))
+    assert record["markdown_stripped"] == 0
