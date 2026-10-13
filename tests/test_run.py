@@ -1,15 +1,25 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
 from conftest import ROOT, make_deps, make_guard
+from zchut import cli
 from zchut.answer.model import FakeAnswerModel
 from zchut.cli import app
-from zchut.config import ConfigError, Prices, Secrets, load_prices, load_settings
+from zchut.config import (
+    ConfigError,
+    Prices,
+    Secrets,
+    load_dotenv,
+    load_prices,
+    load_secrets,
+    load_settings,
+)
 from zchut.index.embedder import FakeEmbedder
 from zchut.index.store import InMemoryVectorStore
 from zchut.run.ask import run_ask
@@ -124,6 +134,55 @@ def test_ask_without_keys_fails_fast_with_variable_name(cli_root: Path) -> None:
     assert result.exit_code == 1
     assert "VOYAGE_API_KEY" in result.output
     assert not (cli_root / "runs").exists()
+
+
+def test_load_dotenv_parses_pairs_and_keeps_existing_values(tmp_path: Path) -> None:
+    path = tmp_path / ".env"
+    lines = [
+        "# comment",
+        "",
+        "VOYAGE_API_KEY=plain",
+        'ZCHUT_ANTHROPIC_API_KEY="double quoted"',
+        "OPENROUTER_API_KEY='single'",
+        "  SPACED = value with = sign  ",
+        "NO_EQUALS_LINE",
+        "EMPTY=",
+        "ALREADY=from-file",
+    ]
+    path.write_text("\n".join(lines), encoding="utf-8")
+    env = {"ALREADY": "from-env"}
+    load_dotenv(path, env)
+    assert env == {
+        "ALREADY": "from-env",
+        "VOYAGE_API_KEY": "plain",
+        "ZCHUT_ANTHROPIC_API_KEY": "double quoted",
+        "OPENROUTER_API_KEY": "single",
+        "SPACED": "value with = sign",
+        "EMPTY": "",
+    }
+    missing: dict[str, str] = {}
+    load_dotenv(tmp_path / "absent.env", missing)
+    assert missing == {}
+
+
+def test_load_secrets_reads_the_dotenv_file(
+    cli_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("VOYAGE_API_KEY", "registered-for-teardown")
+    monkeypatch.delenv("VOYAGE_API_KEY")
+    (cli_root / ".env").write_text(f"VOYAGE_API_KEY={KEY}\n", encoding="utf-8")
+    assert load_secrets(cli._dotenv_path()).voyage_api_key == KEY
+    assert os.environ["VOYAGE_API_KEY"] == KEY
+
+
+def test_dotenv_path_prefers_cwd_then_package_root(
+    cli_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    package = cli_root / "package"
+    monkeypatch.setattr(cli, "PACKAGE_ROOT", package)
+    assert cli._dotenv_path() == package / ".env"
+    (cli_root / ".env").write_text("", encoding="utf-8")
+    assert cli._dotenv_path() == cli_root / ".env"
 
 
 def test_unknown_model_price_is_an_error() -> None:

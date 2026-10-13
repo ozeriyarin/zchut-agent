@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 
 from bs4 import BeautifulSoup, Tag
 
+from zchut.sources.fetch import on_domain
 from zchut.types import FetchedPage, Page, Section
 
 LICENSES = {"kolzchut.org.il": "CC-BY-SA-3.0", "gov.il": "gov.il"}
@@ -26,7 +27,7 @@ class ParseError(Exception):
 def license_for(url: str) -> str:
     host = urlsplit(url).hostname or ""
     for domain, license_id in LICENSES.items():
-        if host == domain or host.endswith("." + domain):
+        if on_domain(host, domain):
             return license_id
     raise ParseError(f"not an allowed public source: {url}")
 
@@ -84,7 +85,7 @@ def _sections(body: Tag) -> list[Section]:
 def parse_page(fetched: FetchedPage) -> Page:
     license_id = license_for(fetched.url)
     soup = BeautifulSoup(fetched.html, "html.parser")
-    last_updated = parse_last_updated(soup.get_text(" ", strip=True))
+    last_updated = fetched.last_updated or parse_last_updated(soup.get_text(" ", strip=True))
     title = _title(soup)
     for tag in soup.find_all(_NOISE):
         tag.decompose()

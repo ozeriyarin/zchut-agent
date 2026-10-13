@@ -35,12 +35,15 @@ from zchut.index.store import ChromaStore, InMemoryVectorStore, VectorStore
 from zchut.run.ask import AskDeps, run_ask
 from zchut.run.cost_guard import CostGuard, Outcome, guarded
 from zchut.run.records import RunRecorder
-from zchut.sources.fetch import Fetcher, FixtureFetcher, HttpxFetcher
+from zchut.sources.fetch import Fetcher, FetcherRouter, FixtureFetcher, HttpxFetcher
+from zchut.sources.mediawiki import MediaWikiFetcher, urllib_opener
 from zchut.types import IngestReport
 
 app = typer.Typer(
     add_completion=False, no_args_is_help=True, help="Zchut: Hebrew RAG over public pages."
 )
+
+PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 
 DryRun = Annotated[bool, typer.Option("--dry-run", help="Use the fakes; no network, no keys.")]
 MaxUsd = Annotated[
@@ -58,6 +61,11 @@ class Context:
     dry_run: bool
 
 
+def _dotenv_path() -> Path:
+    local = Path.cwd() / ".env"
+    return local if local.is_file() else PACKAGE_ROOT / ".env"
+
+
 def _context(command: str, dry_run: bool, max_usd: float | None) -> Context:
     root = Path.cwd()
     settings = load_settings(root)
@@ -67,7 +75,7 @@ def _context(command: str, dry_run: bool, max_usd: float | None) -> Context:
     cap = settings.max_usd if max_usd is None else max_usd
     recorder = RunRecorder(command, dry_run, cap)
     guard = CostGuard(cap, prices, recorder)
-    return Context(settings, prices, load_secrets(), recorder, guard, dry_run)
+    return Context(settings, prices, load_secrets(_dotenv_path()), recorder, guard, dry_run)
 
 
 def _embedder(ctx: Context) -> Embedder:
@@ -94,6 +102,15 @@ def _ingest(
 ) -> IngestReport:
     chunk = ctx.settings.chunk
     return ingest_pages(urls, fetcher, embedder, store, guard, chunk.max_chars, chunk.min_chars)
+
+
+def _live_fetcher(settings: Settings) -> FetcherRouter:
+    fetch, raw_dir = settings.fetch, settings.paths.raw_dir
+    client = httpx.Client(timeout=fetch.timeout_s)
+    opener = urllib_opener(fetch.timeout_s)
+    wiki = MediaWikiFetcher(raw_dir, fetch.user_agent, fetch.min_interval_s, opener)
+    web = HttpxFetcher(client, raw_dir, fetch.user_agent, fetch.min_interval_s)
+    return FetcherRouter({"kolzchut.org.il": wiki}, web)
 
 
 def _store(ctx: Context, embedder: Embedder) -> VectorStore:
@@ -158,12 +175,7 @@ def ingest(
         fixtures = FixtureFetcher(from_fixtures or ctx.settings.paths.fixtures_dir)
         fetcher, urls = fixtures, fixtures.urls()
     else:
-        fetch = ctx.settings.fetch
-        client = httpx.Client(timeout=fetch.timeout_s)
-        fetcher = HttpxFetcher(
-            client, ctx.settings.paths.raw_dir, fetch.user_agent, fetch.min_interval_s
-        )
-        urls = ctx.settings.sources
+        fetcher, urls = _live_fetcher(ctx.settings), ctx.settings.sources
     record = ctx.recorder.record
 
     def action() -> str:

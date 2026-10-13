@@ -26,6 +26,11 @@ test whose name quotes it, and `tests/test_spec_coverage.py` fails when one is m
   Redirects are followed on the same host only (at most 3); cross-host redirects are refused.
   v1 ingests כל זכות only, because gov.il service pages are client-rendered; the fetcher honours
   the robots.txt `Crawl-delay` (5 s on kolzchut) on top of its 1 s per-host minimum.
+  כל זכות pages are read through the MediaWiki API (article HTML plus the revision timestamp as
+  the last-updated date) over Python's standard-library HTTP client, because the site's bot
+  protection blocks httpx. The User-Agent identifies the project with a contact address.
+  The full site is about 7,400 articles; full ingest via the API's `allpages` list is a later
+  version.
 
 ## Running it
 

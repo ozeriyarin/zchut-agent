@@ -11,6 +11,7 @@ class FetchedPage:
     url: str
     html: str
     fetched_at: date
+    last_updated: date | None = None
 
 
 @dataclass(frozen=True)

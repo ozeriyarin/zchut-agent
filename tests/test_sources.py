@@ -3,19 +3,21 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlsplit
 
 import httpx
 import pytest
 from typer.testing import CliRunner
 
-from conftest import AVTALA, FIXTURES, PENSIA, TAX
+from conftest import AVTALA, FIXTURES, PENSIA, ROOT, TAX
 from zchut.cli import app
 from zchut.config import Settings
 from zchut.sources.chunk import PATH_SEP, chunk_page, split_text
-from zchut.sources.fetch import FetchError, FixtureFetcher, HttpxFetcher
+from zchut.sources.fetch import FetchError, FetcherRouter, FixtureFetcher, HttpxFetcher
+from zchut.sources.mediawiki import MediaWikiFetcher
 from zchut.sources.parse import ParseError, parse_last_updated, parse_page
 from zchut.types import Chunk, FetchedPage, Page, Section
 
@@ -300,3 +302,73 @@ def test_httpx_fetcher_refuses_cross_host_redirect(
         fetcher.fetch_page("https://www.gov.il/he/a")
     assert not (tmp_path / "raw").exists()
     assert all("evil.example" not in url for url in seen)
+
+
+MW_FIXTURES = ROOT / "tests" / "fixtures" / "mediawiki"
+UA = "zchut-agent/test"
+
+
+def _wiki_fetcher(
+    tmp_path: Path, robots: bytes, seen: list[str], sleeps: list[float]
+) -> MediaWikiFetcher:
+    def opener(url: str, headers: Mapping[str, str]) -> bytes:
+        assert headers == {"User-Agent": UA}
+        seen.append(url)
+        parts = urlsplit(url)
+        if parts.path == "/robots.txt":
+            return robots
+        action = parse_qs(parts.query)["action"][0]
+        return (
+            MW_FIXTURES / {"parse": "parse.json", "query": "revisions.json"}[action]
+        ).read_bytes()
+
+    return MediaWikiFetcher(
+        tmp_path / "raw", UA, 1.0, opener, clock=lambda: 0.0, sleep=sleeps.append
+    )
+
+
+def test_mediawiki_fetcher_builds_a_page_from_the_api(tmp_path: Path) -> None:
+    seen: list[str] = []
+    fetcher = _wiki_fetcher(tmp_path, b"User-agent: *\nCrawl-delay: 5\n", seen, [])
+    fetched = fetcher.fetch_page(quote(AVTALA, safe=":/"))
+    assert fetched.url == AVTALA
+    assert fetched.last_updated == date(2026, 10, 13)
+    assert '<h2><span class="mw-headline" id="מי_זכאי">מי זכאי</span></h2>' in fetched.html
+    queries = [parse_qs(urlsplit(u).query) for u in seen[1:]]
+    assert [q["action"] for q in queries] == [["parse"], ["query"]]
+    assert queries[0]["page"] == ["דמי_אבטלה"] and queries[1]["titles"] == ["דמי_אבטלה"]
+    assert all(urlsplit(u).path == "/api.php" for u in seen[1:])
+    assert len(list((tmp_path / "raw").iterdir())) == 2
+    parsed = parse_page(fetched)
+    assert (parsed.title, parsed.last_updated) == ("דמי אבטלה", date(2026, 10, 13))
+    assert ("מי זכאי", "תקופת אכשרה") in [s.headings for s in parsed.sections]
+    assert ("הרשמה בשירות התעסוקה",) in [s.headings for s in parsed.sections]
+
+
+def test_mediawiki_fetcher_honours_crawl_delay_on_api_host(tmp_path: Path) -> None:
+    seen: list[str] = []
+    sleeps: list[float] = []
+    fetcher = _wiki_fetcher(tmp_path, b"User-agent: *\nCrawl-delay: 5\n", seen, sleeps)
+    fetcher.fetch_page(AVTALA)
+    assert urlsplit(seen[0]).path == "/robots.txt"
+    assert sleeps == [5.0, 5.0]
+
+
+def test_mediawiki_fetcher_honours_robots_disallow(tmp_path: Path) -> None:
+    seen: list[str] = []
+    fetcher = _wiki_fetcher(tmp_path, b"User-agent: *\nDisallow: /api.php\n", seen, [])
+    with pytest.raises(FetchError, match="robots"):
+        fetcher.fetch_page(AVTALA)
+    assert [urlsplit(u).path for u in seen] == ["/robots.txt"]
+
+
+def test_fetcher_router_picks_mediawiki_for_kolzchut_and_httpx_for_gov_il(
+    tmp_path: Path,
+) -> None:
+    wiki = _wiki_fetcher(tmp_path, b"", [], [])
+    web = HttpxFetcher(httpx.Client(), tmp_path / "raw", UA)
+    router = FetcherRouter({"kolzchut.org.il": wiki}, web)
+    assert router.for_url(AVTALA) is wiki
+    assert router.for_url("https://kolzchut.org.il/he/x") is wiki
+    assert router.for_url(TAX) is web
+    assert router.for_url("https://notkolzchut.org.il/he/x") is web

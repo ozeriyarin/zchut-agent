@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationError
@@ -128,5 +128,24 @@ def load_prices(root: Path) -> Prices:
         raise ConfigError(f"invalid config/prices.json: {exc}") from exc
 
 
-def load_secrets() -> Secrets:
+def load_dotenv(path: Path, env: MutableMapping[str, str]) -> None:
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise ConfigError(f"cannot read {path}: {exc}") from exc
+    for line in text.splitlines():
+        key, sep, value = line.strip().partition("=")
+        if not sep or key.startswith("#") or not key.strip():
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        env.setdefault(key.strip(), value)
+
+
+def load_secrets(dotenv: Path | None = None) -> Secrets:
+    if dotenv is not None:
+        load_dotenv(dotenv, os.environ)
     return Secrets.from_env(os.environ)

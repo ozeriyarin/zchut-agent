@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from zchut import cli
 from zchut.answer.model import FAKE_ANSWER_MODEL, FakeAnswerModel
 from zchut.config import ModelPrice, Prices, Settings, load_prices, load_settings
 from zchut.index.embedder import FAKE_EMBED_MODEL, FakeEmbedder
@@ -68,6 +69,7 @@ def cli_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     shutil.copytree(FIXTURES, tmp_path / "tests" / "fixtures" / "pages")
     shutil.copytree(ROOT / "eval", tmp_path / "eval")
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "PACKAGE_ROOT", tmp_path)
     for name in ("VOYAGE_API_KEY", "ZCHUT_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"):
         monkeypatch.delenv(name, raising=False)
     return tmp_path
