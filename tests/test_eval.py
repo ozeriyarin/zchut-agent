@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -12,8 +13,13 @@ from zchut.cli import app
 from zchut.config import ConfigError, Prices, load_settings
 from zchut.eval.metrics import citation_precision, hit_at_k, rate
 from zchut.eval.questions import EvalQuestion, load_questions
-from zchut.eval.run_eval import run_eval
+from zchut.eval.run_eval import _calibration_line, calibrate, run_eval
+from zchut.index.embedder import FAKE_EMBED_MODEL, FakeEmbedder, InputType
 from zchut.index.store import InMemoryVectorStore
+from zchut.run.ask import AskDeps
+from zchut.run.cost_guard import cost_usd
+from zchut.tokens import estimate_tokens
+from zchut.types import EmbedResult, Usage
 
 runner = CliRunner()
 FIXTURE_URLS = {AVTALA, TAX, PENSIA}
@@ -32,10 +38,23 @@ def test_criterion_7_eval_set_and_dry_run_report(cli_root: Path) -> None:
 
     result = runner.invoke(app, ["eval", "--dry-run"])
     assert result.exit_code == 0, result.output
-    for label in ("hit@3:", "דיוק ציטוטים:", "שיעור סירוב:"):
+    for label in ("hit@3:", "דיוק ציטוטים:", "שיעור סירוב:", "כיול: שאלות עם מקור ≥"):
         assert label in result.output
     report = json.loads(next((cli_root / "runs").glob("*-eval-report.json")).read_text("utf-8"))
     assert report["questions"] == 30 and len(report["rows"]) == 30
+    for row in report["rows"]:
+        assert row["best_score"] == max(row["retrieved_scores"])
+        assert row["expected_urls"] or row["hit"] is None
+    sourced = [r for r in report["rows"] if r["expected_urls"]]
+    assert all(isinstance(r["hit"], bool) for r in sourced)
+    assert report["hit_at_3"] == pytest.approx(sum(r["hit"] for r in sourced) / len(sourced))
+    cal = report["calibration"]
+    answerable = [r["best_score"] for r in sourced]
+    refusal = [r["best_score"] for r in report["rows"] if r["expect_refusal"]]
+    assert cal["answerable_min_best_score"] == min(answerable)
+    assert cal["refusal_max_best_score"] == max(refusal)
+    assert cal["overlap"] is (max(refusal) >= min(answerable))
+    assert (cal["suggested_min_score"] is None) is cal["overlap"]
     assert report["hit_at_3"] is not None and report["citation_precision"] is not None
     assert report["expected_refusal_rate"] == pytest.approx(6 / 30)
     assert next((cli_root / "runs").glob("*-eval.json"))
@@ -92,3 +111,78 @@ def test_citation_precision(
 
 def test_rate() -> None:
     assert rate([True, False, False, True]) == 0.5 and rate([]) == 0.0
+
+
+@pytest.mark.parametrize(
+    ("answerable", "refusal", "suggested", "overlap"),
+    [
+        ([0.6, 0.52, 0.7], [0.47, 0.3, 0.4], 0.495, False),
+        ([0.55, 0.6], [0.58, 0.4], None, True),
+        ([0.5], [0.5], None, True),
+        ([0.5], [], None, False),
+    ],
+)
+def test_calibrate(
+    answerable: list[float], refusal: list[float], suggested: float | None, overlap: bool
+) -> None:
+    cal = calibrate(answerable, refusal)
+    assert cal.overlap is overlap
+    assert cal.suggested_min_score == (None if suggested is None else pytest.approx(suggested))
+    assert cal.answerable_min_best_score == min(answerable)
+    assert cal.refusal_max_best_score == max(refusal, default=None)
+
+
+def test_calibrate_medians() -> None:
+    cal = calibrate([0.5, 0.7, 0.6], [0.2, 0.4])
+    assert cal.answerable_median == pytest.approx(0.6)
+    assert cal.refusal_median == pytest.approx(0.3)
+
+
+def test_calibration_line() -> None:
+    line = _calibration_line(calibrate([0.52, 0.6], [0.48, 0.2]))
+    assert line == "כיול: שאלות עם מקור ≥ 0.52, שאלות לסירוב ≤ 0.48 → סף מוצע 0.50"
+    assert "חפיפה" in _calibration_line(calibrate([0.4], [0.5]))
+
+
+class SpyEmbedder(FakeEmbedder):
+    def __init__(self) -> None:
+        super().__init__()
+        self.batches: list[int] = []
+
+    def embed(self, texts: Sequence[str], input_type: InputType) -> EmbedResult:
+        self.batches.append(len(texts))
+        return super().embed(texts, input_type)
+
+
+def test_run_eval_embeds_all_questions_in_one_call(
+    fixture_store: InMemoryVectorStore, priced: Prices
+) -> None:
+    questions = load_questions(ROOT / "eval" / "questions.json")
+    spy = SpyEmbedder()
+    model = FakeAnswerModel()
+    guard = make_guard(priced)
+    outcome, report = run_eval(questions, AskDeps(spy, fixture_store, model, 5, 0.3), guard, True)
+    assert outcome.exit_code == 0 and spy.batches == [30] and model.calls == 0
+    assert [c.role for c in guard.recorder.record.calls] == ["embed"]
+    assert len(report.rows) == 30
+
+
+def test_run_eval_budget_covers_the_whole_query_batch(
+    fixture_store: InMemoryVectorStore, priced: Prices
+) -> None:
+    questions = load_questions(ROOT / "eval" / "questions.json")
+    tokens = sum(estimate_tokens(q.question) for q in questions)
+    estimate = cost_usd(priced, FAKE_EMBED_MODEL, Usage(tokens))
+    spy = SpyEmbedder()
+    guard = make_guard(priced, estimate * 0.99)
+    outcome, _ = run_eval(
+        questions, AskDeps(spy, fixture_store, FakeAnswerModel(), 5, 0.3), guard, True
+    )
+    assert outcome.exit_code == 2 and spy.batches == []
+    outcome, _ = run_eval(
+        questions,
+        AskDeps(spy, fixture_store, FakeAnswerModel(), 5, 0.3),
+        make_guard(priced, estimate),
+        True,
+    )
+    assert outcome.exit_code == 0 and spy.batches == [30]

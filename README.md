@@ -74,6 +74,11 @@ embedder, so these numbers check the pipeline, not retrieval quality):
 | citation precision | 0.83 |
 | refusal rate (expected 0.20) | 0.13 |
 
+After the metrics `zchut eval` prints a `כיול:` line with the lowest top score among answerable
+questions and the highest among refusal questions; set `retrieval.min_score` in
+`config/zchut.json` to the suggested midpoint it prints (if it reports overlap, no threshold
+separates them and retrieval needs work first).
+
 ## Budget rules
 
 - Under 10 USD per month, all providers together. Anthropic has a console hard limit; Voyage and
