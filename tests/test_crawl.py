@@ -19,6 +19,8 @@ from zchut.index.crawl import (
     CrawlDeps,
     CrawlPlan,
     PlannedArticle,
+    estimate,
+    format_plan,
     make_plan,
     run_crawl,
 )
@@ -44,6 +46,7 @@ WIKI = "https://www.kolzchut.org.il/he/"
 REVS = {"דמי אבטלה": 100, "החזר מס הכנסה": 201, "פנסיה": 300, "קצבת זיקנה (קצבת אזרח ותיק)": 400}
 STAMP = "2026-10-01T10:00:00Z"
 CHUNK = ChunkSettings(max_chars=700, min_chars=100)
+REMOVED = ROOT / "tests" / "fixtures" / "pages-short" / "kolzchut-removed.html"
 
 
 class FakeApi:
@@ -82,10 +85,16 @@ def page_html(title: str) -> str:
 
 
 class FakeArticles:
-    def __init__(self, failing: Sequence[str] = (), clock: FakeClock | None = None) -> None:
+    def __init__(
+        self,
+        failing: Sequence[str] = (),
+        clock: FakeClock | None = None,
+        removed: Sequence[str] = (),
+    ) -> None:
         self.fetched: list[str] = []
         self.failing = set(failing)
         self.clock = clock
+        self.removed = set(removed)
 
     def fetch_article(self, url: str, last_updated: date | None) -> FetchedPage:
         self.fetched.append(url)
@@ -94,7 +103,8 @@ class FakeArticles:
         if url in self.failing:
             raise FetchError(f"request for {url} failed")
         title = url.removeprefix(WIKI).replace("_", " ")
-        return FetchedPage(url, page_html(title), date(2026, 10, 13), last_updated)
+        html = REMOVED.read_text(encoding="utf-8") if url in self.removed else page_html(title)
+        return FetchedPage(url, html, date(2026, 10, 13), last_updated)
 
 
 class FakeClock:
@@ -365,3 +375,29 @@ def test_criterion_7_crawl_record_redacted(cli_root: Path) -> None:
     for title in [*REVS, "דף שנמחק", "כל עובד שכיר", "kolzchut.org.il/he", "failed"]:
         assert title not in text and title.replace(" ", "_") not in text
     assert load_manifest(cli_root / "data" / "manifest.json").articles[url("פנסיה")].error
+
+
+def test_removed_stub_is_skipped_and_not_replanned(tmp_path: Path, priced: Prices) -> None:
+    path = fixture_manifest(tmp_path)
+    pensia = url("פנסיה")
+    manifest = load_manifest(path)
+    settings = load_settings(ROOT)
+    plan = make_plan(FakeApi(REVS), settings.crawl, manifest)
+    record = new_record(plan)
+    store = RecordingStore(path)
+    embedder = SpyEmbedder()
+    fetcher = FakeArticles(removed=[pensia])
+    run_crawl(plan, manifest, deps_for(path, fetcher, store, make_guard(priced), embedder), record)
+    entry = load_manifest(path).articles[pensia]
+    assert (entry.status, entry.reason, entry.revid, entry.chunks) == ("skipped", "removed", 300, 0)
+    assert entry.error is None and pensia not in store.urls()
+    assert not any("מיזם" in text for call in embedder.calls for text in call)
+    assert url("קצבת זיקנה (קצבת אזרח ותיק)") in store.urls()
+    assert (record.empty, record.errors, record.embedded, record.remaining) == (1, 0, 2, 0)
+    again = make_plan(FakeApi(REVS), settings.crawl, load_manifest(path))
+    assert pensia not in [a.url for a in again.todo]
+    assert (again.unchanged, again.skipped) == (4, 1)
+    est = estimate(len(again.todo), settings.crawl, settings.embed)
+    assert "דפים ריקים שדולגו: 1" in format_plan(again, est)
+    bumped = make_plan(FakeApi({**REVS, "פנסיה": 301}), settings.crawl, load_manifest(path))
+    assert [a.url for a in bumped.todo] == [pensia] and bumped.skipped == 0

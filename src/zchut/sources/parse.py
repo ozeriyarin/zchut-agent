@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
+from typing import Literal
 from urllib.parse import urlsplit
 
 from bs4 import BeautifulSoup, Tag
@@ -18,10 +19,17 @@ _UPDATED_MW = re.compile(
     r"עודכן לאחרונה\s*ב?\s*\d{1,2}:\d{2},\s*(\d{1,2})\s+ב?(" + "|".join(_MONTHS) + r")\s+(\d{4})"
 )
 _TITLE_SUFFIX = re.compile(r"\s*[-|–]\s*(?:כל-זכות|GOV\.IL)\s*$")
+_REMOVED = ("המידע בדף הוסר", "הדף הוסר")
 
 
 class ParseError(Exception):
     pass
+
+
+class EmptyPage(ParseError):  # noqa: N818
+    def __init__(self, message: str, reason: Literal["removed", "empty"]) -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 def license_for(url: str) -> str:
@@ -94,7 +102,11 @@ def parse_page(fetched: FetchedPage) -> Page:
         raise ParseError(f"no body in {fetched.url}")
     sections = _sections(body)
     if not sections:
-        raise ParseError(f"no text sections in {fetched.url}")
+        text = body.get_text(" ", strip=True)
+        reason: Literal["removed", "empty"] = (
+            "removed" if any(m in text for m in _REMOVED) else "empty"
+        )
+        raise EmptyPage(f"no text sections in {fetched.url}", reason)
     return Page(
         url=fetched.url,
         title=title,

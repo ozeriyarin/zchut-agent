@@ -16,8 +16,9 @@ class ManifestEntry(BaseModel):
     last_updated: str | None
     fetched_at: str
     chunks: int
-    status: Literal["ok", "error"]
+    status: Literal["ok", "error", "skipped"]
     error: str | None = None
+    reason: str | None = None
 
 
 class Manifest(BaseModel):

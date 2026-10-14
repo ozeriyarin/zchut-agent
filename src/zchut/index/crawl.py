@@ -17,7 +17,7 @@ from zchut.run.cost_guard import BudgetExceeded, CostGuard
 from zchut.sources.catalog import Article, CatalogApi, Revision, latest_revisions, list_articles
 from zchut.sources.chunk import chunk_page
 from zchut.sources.fetch import FetchError
-from zchut.sources.parse import ParseError, parse_page
+from zchut.sources.parse import EmptyPage, ParseError, parse_page
 from zchut.tokens import estimate_tokens
 from zchut.types import Chunk, CrawlRecord, FetchedPage
 
@@ -41,6 +41,7 @@ class CrawlPlan:
     changed: int
     unchanged: int
     gone: tuple[str, ...]
+    skipped: int = 0
 
 
 @dataclass(frozen=True)
@@ -73,22 +74,23 @@ def diff(
 ) -> CrawlPlan:
     todo: list[PlannedArticle] = []
     listed: set[str] = set()
-    new = unchanged = 0
+    new = unchanged = skipped = 0
     for article in articles:
         listed.add(article.url)
         rev = revisions.get(article.title)
         if rev is None:
             continue
         entry = manifest.articles.get(article.url)
-        if entry is not None and entry.status == "ok" and entry.revid == rev.revid:
+        if entry is not None and entry.status != "error" and entry.revid == rev.revid:
             unchanged += 1
+            skipped += entry.status == "skipped"
             continue
         if entry is None:
             new += 1
         todo.append(PlannedArticle(article.title, article.url, rev.revid, rev.timestamp.date()))
     gone = tuple(sorted(url for url in manifest.articles if url not in listed))
     todo.sort(key=lambda a: a.title)
-    return CrawlPlan(tuple(todo), new, len(todo) - new, unchanged, gone)
+    return CrawlPlan(tuple(todo), new, len(todo) - new, unchanged, gone, skipped)
 
 
 def make_plan(api: CatalogApi, crawl: CrawlSettings, manifest: Manifest) -> CrawlPlan:
@@ -114,6 +116,7 @@ def format_plan(plan: CrawlPlan, est: Estimate) -> str:
             f"חדשים: {plan.new}",
             f"השתנו: {plan.changed}",
             f"ללא שינוי: {plan.unchanged}",
+            f"דפים ריקים שדולגו: {plan.skipped}",
             f"הוסרו מהאתר: {len(plan.gone)}",
             f"טוקנים משוערים: {est.tokens:,}",
             f"הערכת זמן: הורדה {est.fetch_s / 3600:.1f} שעות, "
@@ -128,6 +131,7 @@ def format_run(record: CrawlRecord) -> str:
             f"מתוכננים: {record.planned}",
             f"נשמרו: {record.embedded}",
             f"שגיאות: {record.errors}",
+            f"דפים ריקים שדולגו: {record.empty}",
             f"ללא שינוי: {record.skipped}",
             f"נמחקו: {record.deleted}",
             f"נותרו: {record.remaining}",
@@ -143,13 +147,15 @@ def _mark(manifest: Manifest, article: PlannedArticle, entry: ManifestEntry, pat
 
 
 def _error(article: PlannedArticle, exc: Exception) -> ManifestEntry:
+    empty = exc if isinstance(exc, EmptyPage) else None
     return ManifestEntry(
         revid=article.revid,
         last_updated=article.last_updated.isoformat(),
         fetched_at=date.today().isoformat(),
         chunks=0,
-        status="error",
-        error=str(exc),
+        status="error" if empty is None else "skipped",
+        error=str(exc) if empty is None else None,
+        reason=None if empty is None else empty.reason,
     )
 
 
@@ -204,7 +210,10 @@ def run_crawl(
                 chunks = chunk_page(parse_page(fetched), **deps.chunk.model_dump())
             except (FetchError, ParseError) as exc:
                 _mark(manifest, article, _error(article, exc), deps.manifest_path)
-                record.errors += 1
+                if isinstance(exc, EmptyPage):
+                    record.empty += 1
+                else:
+                    record.errors += 1
                 continue
             record.fetched += 1
             batch.items.append((article, chunks, fetched.fetched_at))
@@ -216,7 +225,7 @@ def run_crawl(
         record.stopped_by = "budget"
         raise
     finally:
-        record.remaining = len(plan.todo) - record.embedded - record.errors
+        record.remaining = len(plan.todo) - record.embedded - record.errors - record.empty
         if record.stopped_by == "done" and record.remaining:
             record.stopped_by = "limit"
         record.store_chunks = deps.store.count()

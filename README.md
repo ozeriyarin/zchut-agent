@@ -96,9 +96,11 @@ current: a later run fetches and embeds only articles whose revision changed.
   fetch (one API request, the revision date is already known), parse, chunk, embed, replace in
   Chroma, and only then write the article's manifest entry. Chunks of consecutive articles share
   embedding requests up to `embed.max_batch_tokens`. A fetch, parse or embed error marks the
-  article `status: error` (retried on the next run) and the run continues. `--max-minutes` stops
-  between articles (the listing is not counted); `--max-usd` stops before the embed call that
-  would cross it (exit code 2). Either way the manifest only lists articles that are in the store.
+  article `status: error` (retried on the next run) and the run continues. A removed stub page (no
+  text blocks, only a removal notice) is marked `status: skipped` with its revision, counted in the
+  skipped-pages line of plan and run, and not fetched again until its revision changes.
+  `--max-minutes` stops between articles (the listing is not counted); `--max-usd` stops before
+  the embed call that would cross it (exit code 2). Either way the manifest only lists articles that are in the store.
 - The record `runs/<ts>-crawl.json` holds the counts (planned, fetched, embedded, errors, skipped,
   deleted, remaining), the chunk count in the store, elapsed seconds, embed tokens and cost, why it
   stopped, and the estimate used; never a title, a URL or article text.

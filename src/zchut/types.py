@@ -121,6 +121,7 @@ class CrawlRecord(BaseModel):
     embedded: int = 0
     errors: int = 0
     skipped: int
+    empty: int = 0
     deleted: int = 0
     remaining: int = 0
     store_chunks: int = 0

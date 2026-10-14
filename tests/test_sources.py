@@ -22,7 +22,7 @@ from zchut.config import Settings
 from zchut.sources.chunk import PATH_SEP, chunk_page, split_text
 from zchut.sources.fetch import FetchError, FetcherRouter, FixtureFetcher, HttpxFetcher
 from zchut.sources.mediawiki import MediaWikiFetcher, urllib_opener
-from zchut.sources.parse import ParseError, parse_last_updated, parse_page
+from zchut.sources.parse import EmptyPage, ParseError, parse_last_updated, parse_page
 from zchut.types import Chunk, FetchedPage, Page, Section
 
 runner = CliRunner()
@@ -192,6 +192,40 @@ def test_parse_mediawiki_title_skips_article_type() -> None:
     parsed = parse_page(FetchedPage(url=AVTALA, html=html, fetched_at=date(2026, 10, 13)))
     assert parsed.title == "קצבת זיקנה"
     assert parsed.sections == (Section(("א",), "תוכן"),)
+
+
+SHORT = ROOT / "tests" / "fixtures" / "pages-short"
+
+
+def test_parse_short_page_without_headings_keeps_one_title_section(settings: Settings) -> None:
+    fetcher = FixtureFetcher(SHORT)
+    [url] = fetcher.urls()
+    parsed = parse_page(fetcher.fetch_page(url))
+    [section] = parsed.sections
+    assert section.headings == () and "טיפולי דיאליזה." in section.text
+    chunks = chunk_page(parsed, **settings.chunk.model_dump())
+    assert chunks and {c.section for c in chunks} == {parsed.title}
+    assert parsed.title == "החזר הוצאות נסיעה לטיפול רפואי"
+
+
+def test_parse_removed_stub_raises_empty_page() -> None:
+    html = (SHORT / "kolzchut-removed.html").read_text(encoding="utf-8")
+    page_url = "https://www.kolzchut.org.il/he/מיזם_סיוע_לדוגמה"
+    with pytest.raises(EmptyPage, match="no text sections in") as removed:
+        parse_page(FetchedPage(page_url, html, date(2026, 10, 14)))
+    assert removed.value.reason == "removed"
+    bare = '<h1>ריק</h1><div id="mw-content-text"><div>תיבה בלי תוכן זכויות</div></div>'
+    with pytest.raises(EmptyPage) as empty:
+        parse_page(FetchedPage(page_url, bare, date(2026, 10, 14)))
+    assert empty.value.reason == "empty"
+
+
+def test_parse_keeps_intro_before_first_heading(settings: Settings) -> None:
+    parsed = parse_page(FixtureFetcher(FIXTURES).fetch_page(AVTALA))
+    assert parsed.sections[0].headings == ()
+    assert parsed.sections[0].text.startswith("דמי אבטלה הם תשלום")
+    chunks = chunk_page(parsed, **settings.chunk.model_dump())
+    assert chunks[0].section == parsed.title and chunks[0].text.startswith("דמי אבטלה הם")
 
 
 def test_httpx_fetcher_honours_crawl_delay(tmp_path: Path) -> None:
