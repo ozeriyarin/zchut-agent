@@ -39,6 +39,7 @@
     "api_url": "https://www.kolzchut.org.il/api.php",
     "skip_prefixes": ["תבנית:", "קטגוריה:"],
     "list_batch": 500,
+    "max_query_chars": 30000,
     "revisions_batch": 50,
     "fetch_delay_s": 5,
     "tokens_per_article": 3000
