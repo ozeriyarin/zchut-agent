@@ -3,7 +3,8 @@
     "id": "q01",
     "question": "מי זכאי לדמי אבטלה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/דמי_אבטלה"
+      "https://www.kolzchut.org.il/he/דמי_אבטלה",
+      "https://www.kolzchut.org.il/he/זכאות_לדמי_אבטלה"
     ],
     "expect_refusal": false
   },
@@ -11,7 +12,9 @@
     "id": "q02",
     "question": "מה זו תקופת אכשרה לדמי אבטלה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/דמי_אבטלה"
+      "https://www.kolzchut.org.il/he/דמי_אבטלה",
+      "https://www.kolzchut.org.il/he/תקופת_אכשרה_לדמי_אבטלה",
+      "https://www.kolzchut.org.il/he/זכאות_לדמי_אבטלה"
     ],
     "expect_refusal": false
   },
@@ -19,7 +22,8 @@
     "id": "q03",
     "question": "כמה חודשי עבודה צריך כדי לקבל דמי אבטלה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/דמי_אבטלה"
+      "https://www.kolzchut.org.il/he/דמי_אבטלה",
+      "https://www.kolzchut.org.il/he/תקופת_אכשרה_לדמי_אבטלה"
     ],
     "expect_refusal": false
   },
@@ -27,7 +31,9 @@
     "id": "q04",
     "question": "התפטרתי מהעבודה, האם אקבל דמי אבטלה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/דמי_אבטלה"
+      "https://www.kolzchut.org.il/he/דמי_אבטלה",
+      "https://www.kolzchut.org.il/he/מדריך_בנושא_התפטרות_מעבודה",
+      "https://www.kolzchut.org.il/he/התפטרות_בנסיבות_המזכות_בדמי_אבטלה_ללא_תקופת_המתנה"
     ],
     "expect_refusal": false
   },
@@ -35,7 +41,8 @@
     "id": "q05",
     "question": "מה צריך להביא לרישום בלשכת התעסוקה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/דמי_אבטלה"
+      "https://www.kolzchut.org.il/he/דמי_אבטלה",
+      "https://www.kolzchut.org.il/he/רישום_ראשוני_ללשכת_התעסוקה_באופן_מקוון_(באינטרנט)"
     ],
     "expect_refusal": false
   },
@@ -43,7 +50,9 @@
     "id": "q06",
     "question": "מתי צריך להירשם בשירות התעסוקה אחרי הפיטורים?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/דמי_אבטלה"
+      "https://www.kolzchut.org.il/he/דמי_אבטלה",
+      "https://www.kolzchut.org.il/he/התייצבות_בשירות_התעסוקה",
+      "https://www.kolzchut.org.il/he/מדריך_בנושא_פיטורים"
     ],
     "expect_refusal": false
   },
@@ -67,7 +76,8 @@
     "id": "q09",
     "question": "איך מגישים תביעה לדמי אבטלה לביטוח הלאומי?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/דמי_אבטלה"
+      "https://www.kolzchut.org.il/he/דמי_אבטלה",
+      "https://www.kolzchut.org.il/he/הגשת_תביעה_לדמי_אבטלה"
     ],
     "expect_refusal": false
   },
@@ -75,7 +85,8 @@
     "id": "q10",
     "question": "מה קורה אם לא מתייצבים בלשכת התעסוקה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/דמי_אבטלה"
+      "https://www.kolzchut.org.il/he/דמי_אבטלה",
+      "https://www.kolzchut.org.il/he/התייצבות_בשירות_התעסוקה"
     ],
     "expect_refusal": false
   },
@@ -83,7 +94,8 @@
     "id": "q11",
     "question": "כמה המעסיק חייב להפריש לפנסיה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים"
+      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים",
+      "https://www.kolzchut.org.il/he/חובת_ביטוח_פנסיוני_לעובדים"
     ],
     "expect_refusal": false
   },
@@ -91,7 +103,9 @@
     "id": "q12",
     "question": "מאיזה גיל עובד זכאי להפרשות לפנסיה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים"
+      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים",
+      "https://www.kolzchut.org.il/he/הפרשות_לביטוח_פנסיוני_לעובד_או_עובדת_שהגיעו_לגיל_פרישה",
+      "https://www.kolzchut.org.il/he/כשהעובד_נקלט_לעבודה_בגיל_פרישת_חובה_או_לאחריו,_חובה_על_מעסיק_לבדוק_האם_העובד_מקבל_קצבה_השוללת_את_זכאותו_לביטוח_פנסיוני"
     ],
     "expect_refusal": false
   },
@@ -99,7 +113,8 @@
     "id": "q13",
     "question": "אחרי כמה חודשי עבודה מתחילות הפרשות לפנסיה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים"
+      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים",
+      "https://www.kolzchut.org.il/he/חובת_ביטוח_פנסיוני_לעובדים"
     ],
     "expect_refusal": false
   },
@@ -107,7 +122,8 @@
     "id": "q14",
     "question": "מה שיעור ההפרשה של העובד לפנסיית חובה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים"
+      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים",
+      "https://www.kolzchut.org.il/he/חובת_ביטוח_פנסיוני_לעובדים"
     ],
     "expect_refusal": false
   },
@@ -115,7 +131,9 @@
     "id": "q15",
     "question": "מה קורה אם לא בחרתי קרן פנסיה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים"
+      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים",
+      "https://www.kolzchut.org.il/he/בחירת_קופת_ברירת_מחדל_לפנסיה_או_לקרן_השתלמות_על_ידי_מעסיק_או_ארגון_עובדים",
+      "https://www.kolzchut.org.il/he/בחירה_בזהות_הגוף_הפנסיוני"
     ],
     "expect_refusal": false
   },
@@ -123,7 +141,8 @@
     "id": "q16",
     "question": "המעסיק לא מפריש לי לפנסיה, מה עושים?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים"
+      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים",
+      "https://www.kolzchut.org.il/he/הגשת_תלונה_לקו_הצדק_הפנסיוני_ברשות_שוק_ההון,_ביטוח_וחסכון"
     ],
     "expect_refusal": false
   },
@@ -131,7 +150,8 @@
     "id": "q17",
     "question": "איך בודקים אם המעסיק הפריש כספים לפנסיה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים"
+      "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים",
+      "https://www.kolzchut.org.il/he/חובת_ביטוח_פנסיוני_לעובדים"
     ],
     "expect_refusal": false
   },
@@ -139,7 +159,6 @@
     "id": "q18",
     "question": "איך מקבלים החזר מס הכנסה לשכירים?",
     "expected_urls": [
-      "https://www.gov.il/he/service/income-tax-refund-for-employees",
       "https://www.kolzchut.org.il/he/החזר_מס_הכנסה"
     ],
     "expect_refusal": false
@@ -148,7 +167,6 @@
     "id": "q19",
     "question": "על כמה שנים אחורה אפשר לבקש החזר מס?",
     "expected_urls": [
-      "https://www.gov.il/he/service/income-tax-refund-for-employees",
       "https://www.kolzchut.org.il/he/החזר_מס_הכנסה"
     ],
     "expect_refusal": false
@@ -157,7 +175,6 @@
     "id": "q20",
     "question": "אילו מסמכים צריך להכין לבקשת החזר מס?",
     "expected_urls": [
-      "https://www.gov.il/he/service/income-tax-refund-for-employees",
       "https://www.kolzchut.org.il/he/החזר_מס_הכנסה"
     ],
     "expect_refusal": false
@@ -166,8 +183,8 @@
     "id": "q21",
     "question": "החלפתי מקום עבודה באמצע השנה, מגיע לי החזר מס?",
     "expected_urls": [
-      "https://www.gov.il/he/service/income-tax-refund-for-employees",
-      "https://www.kolzchut.org.il/he/החזר_מס_הכנסה"
+      "https://www.kolzchut.org.il/he/החזר_מס_הכנסה",
+      "https://www.kolzchut.org.il/he/תיאום_מס_הכנסה"
     ],
     "expect_refusal": false
   },
@@ -175,7 +192,6 @@
     "id": "q22",
     "question": "איך מגישים בקשה להחזר מס באופן מקוון?",
     "expected_urls": [
-      "https://www.gov.il/he/service/income-tax-refund-for-employees",
       "https://www.kolzchut.org.il/he/החזר_מס_הכנסה"
     ],
     "expect_refusal": false
@@ -184,7 +200,6 @@
     "id": "q23",
     "question": "תוך כמה זמן מתקבל החזר המס?",
     "expected_urls": [
-      "https://www.gov.il/he/service/income-tax-refund-for-employees",
       "https://www.kolzchut.org.il/he/החזר_מס_הכנסה"
     ],
     "expect_refusal": false
@@ -193,7 +208,6 @@
     "id": "q24",
     "question": "מה זה טופס 106 ולמה צריך אותו להחזר מס?",
     "expected_urls": [
-      "https://www.gov.il/he/service/income-tax-refund-for-employees",
       "https://www.kolzchut.org.il/he/החזר_מס_הכנסה"
     ],
     "expect_refusal": false
@@ -201,8 +215,9 @@
   {
     "id": "q25",
     "question": "איך מחדשים דרכון ישראלי?",
-    "expected_urls": [],
-    "expect_refusal": true
+    "expected_urls": [
+      "https://www.kolzchut.org.il/he/הוצאת_דרכון_ביומטרי"
+    ]
   },
   {
     "id": "q26",
@@ -213,8 +228,9 @@
   {
     "id": "q27",
     "question": "איך מוציאים רישיון נהיגה לאופנוע?",
-    "expected_urls": [],
-    "expect_refusal": true
+    "expected_urls": [
+      "https://www.kolzchut.org.il/he/אישור_להוצאת_רישיון_נהיגה"
+    ]
   },
   {
     "id": "q28",
@@ -231,7 +247,9 @@
   {
     "id": "q30",
     "question": "איך משנים כתובת בתעודת הזהות?",
-    "expected_urls": [],
-    "expect_refusal": true
+    "expected_urls": [
+      "https://www.kolzchut.org.il/he/הוצאת_ספח_חדש_לתעודת_זהות",
+      "https://www.kolzchut.org.il/he/שינוי_כתובת_מגורים_במרשם_האוכלוסין"
+    ]
   }
 ]

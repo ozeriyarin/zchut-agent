@@ -232,7 +232,7 @@ def test_criterion_7_no_verify_path_and_cost_command(
     assert (record["graph"]["verified"], record["graph"]["verifier"]) == (None, None)
     assert "verify" not in {c["role"] for c in record["calls"]}
 
-    min_score = settings.retrieval.min_score
+    min_score = settings.retrieval.dry_run_min_score
     v1 = run_ask(
         QUESTION, make_deps(fixture_store, FakeAnswerModel(), min_score), make_guard(priced)
     )

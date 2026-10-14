@@ -21,6 +21,7 @@ class ChunkSettings(BaseModel):
 class RetrievalSettings(BaseModel):
     k: int = Field(gt=0)
     min_score: float
+    dry_run_min_score: float = 0.3
 
 
 class ModelSettings(BaseModel):

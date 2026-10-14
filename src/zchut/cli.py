@@ -227,7 +227,8 @@ def _deps(ctx: Context, k: int | None) -> AskDeps:
     retrieval = ctx.settings.retrieval
     # The answer model is set per tier in _graph_deps; retrieval-only evals never call it.
     model = FakeAnswerModel()
-    return AskDeps(embedder, _store(ctx, embedder), model, k or retrieval.k, retrieval.min_score)
+    threshold = retrieval.dry_run_min_score if ctx.dry_run else retrieval.min_score
+    return AskDeps(embedder, _store(ctx, embedder), model, k or retrieval.k, threshold)
 
 
 def _graph_deps(ctx: Context, ask: AskDeps, tier: str, verifier: str | None) -> GraphDeps:

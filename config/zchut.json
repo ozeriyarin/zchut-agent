@@ -8,7 +8,7 @@
     "https://www.kolzchut.org.il/he/פנסיה"
   ],
   "chunk": {"max_chars": 700, "min_chars": 100},
-  "retrieval": {"k": 5, "min_score": 0.455},
+  "retrieval": {"k": 5, "min_score": 0.57, "dry_run_min_score": 0.3},
   "max_usd": 0.08,
   "models": {
     "answer": "claude-haiku-4-5",

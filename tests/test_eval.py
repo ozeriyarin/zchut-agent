@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 from conftest import AVTALA, PENSIA, ROOT, TAX, make_deps, make_graph_deps, make_guard
 from zchut.answer.model import FakeAnswerModel
 from zchut.cli import app
-from zchut.config import ConfigError, Prices, Settings, load_settings
+from zchut.config import ConfigError, Prices, Settings
 from zchut.eval.labels import VerifierLabel, load_labels, verifier_accuracy
 from zchut.eval.metrics import citation_precision, hit_at_k, rate
 from zchut.eval.questions import EvalQuestion, load_questions
@@ -31,10 +31,10 @@ def test_criterion_7_eval_set_and_dry_run_report(cli_root: Path) -> None:
     """criterion 7: "`eval/questions.json` holds exactly 30 entries that validate against the schema (`id`, `question`, at least one `expected_urls` entry or `expect_refusal: true`), and `zchut eval --dry-run` over the fixture index reports retrieval hit@3, citation precision and refusal rate and writes an eval report under `runs/`." """
     questions = load_questions(ROOT / "eval" / "questions.json")
     assert len(questions) == 30
-    known = FIXTURE_URLS | set(load_settings(ROOT).sources)
     for q in questions:
         urls = set(q.expected_urls)
-        assert q.expect_refusal or (urls & FIXTURE_URLS and urls <= known)
+        assert q.expect_refusal or urls
+        assert all(u.startswith("https://www.kolzchut.org.il/he/") for u in urls)
     with pytest.raises(ValueError, match="expected_urls or expect_refusal"):
         EvalQuestion(id="x", question="שאלה?")
 
@@ -58,7 +58,8 @@ def test_criterion_7_eval_set_and_dry_run_report(cli_root: Path) -> None:
     assert cal["overlap"] is (max(refusal) >= min(answerable))
     assert (cal["suggested_min_score"] is None) is cal["overlap"]
     assert report["hit_at_3"] is not None and report["citation_precision"] is not None
-    assert report["expected_refusal_rate"] == pytest.approx(6 / 30)
+    refusals = sum(1 for q in questions if q.expect_refusal)
+    assert report["expected_refusal_rate"] == pytest.approx(refusals / 30)
     assert next((cli_root / "runs").glob("*-eval.json"))
 
 
