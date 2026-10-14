@@ -6,8 +6,8 @@
   },
   "pension": {
     "name": "רשות שוק ההון, ביטוח וחיסכון",
-    "handles": "פנסיית חובה, קרנות פנסיה ותלונות על הפרשות שלא הועברו",
-    "contact_url": "https://www.gov.il/he/departments/capital_market_insurance_and_saving_authority"
+    "handles": "פנסיית חובה, קרנות פנסיה ותלונות על הפרשות שלא הועברו (הדף מסביר את החובה ולמי פונים)",
+    "contact_url": "https://www.kolzchut.org.il/he/חובת_ביטוח_פנסיוני_לעובדים"
   },
   "tax": {
     "name": "רשות המסים בישראל",
