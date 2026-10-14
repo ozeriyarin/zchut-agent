@@ -248,10 +248,11 @@ def _table(output: str) -> str:
 def test_criterion_4_v4a_verifier_accuracy_column(cli_root: Path) -> None:
     """criterion 4: "With `eval/verifier_labels.json` present, the eval table has a `verifier accuracy` column per verifier computed against the labels; without the file the column is `—`." """
     path = cli_root / "eval" / "verifier_labels.json"
+    path.write_text(json.dumps({"version": 1, "labels": {}}), "utf-8")
     assert load_labels(path) == {}
-    shipped = runner.invoke(app, ["eval", "--dry-run"])
-    assert shipped.exit_code == 0, shipped.output
-    assert _column(_table(shipped.output), "verifier accuracy") == ["—"]
+    empty = runner.invoke(app, ["eval", "--dry-run"])
+    assert empty.exit_code == 0, empty.output
+    assert _column(_table(empty.output), "verifier accuracy") == ["—"]
     path.unlink()
     missing = runner.invoke(app, ["eval", "--dry-run"])
     assert _column(_table(missing.output), "verifier accuracy") == ["—"]
