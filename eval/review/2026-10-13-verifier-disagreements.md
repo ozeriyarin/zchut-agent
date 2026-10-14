@@ -16,8 +16,8 @@ the eval's), read it against its sources, fill `label:` (supported / unsupported
 - rejected by: jev
 - expected urls:
   - https://www.kolzchut.org.il/he/דמי_אבטלה
-- label:
-- reason:
+- label:supported 
+- reason:שכירים תושבי ישראל שפוטרו, התפטרו או הוצאו לחל"ת (למינימום הימים הנדרשים).
 
 ## q10
 
@@ -25,8 +25,8 @@ the eval's), read it against its sources, fill `label:` (supported / unsupported
 - rejected by: haiku
 - expected urls:
   - https://www.kolzchut.org.il/he/דמי_אבטלה
-- label:
-- reason:
+- label:unsupported
+- reason:לא מצויין מה קורה אם לא מתייצבים 
 
 ## q11
 
@@ -34,8 +34,8 @@ the eval's), read it against its sources, fill `label:` (supported / unsupported
 - rejected by: both
 - expected urls:
   - https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים
-- label:
-- reason:
+- label:unsupported
+- reason: that a main topic page with almost no details  , includes lots of redirect links under the same url
 
 ## q13
 
@@ -43,8 +43,8 @@ the eval's), read it against its sources, fill `label:` (supported / unsupported
 - rejected by: jev
 - expected urls:
   - https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים
-- label:
-- reason:
+- label:unsupported
+- reason: that a main topic page with almost no details , includes lots of redirect links under the same url
 
 ## q15
 
@@ -52,8 +52,8 @@ the eval's), read it against its sources, fill `label:` (supported / unsupported
 - rejected by: both
 - expected urls:
   - https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים
-- label:
-- reason:
+- label:unsupported
+- reason: that a main topic page with almost no details , includes lots of redirect links under the same url
 
 ## q17
 
@@ -61,8 +61,8 @@ the eval's), read it against its sources, fill `label:` (supported / unsupported
 - rejected by: haiku
 - expected urls:
   - https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים
-- label:
-- reason:
+- label:unsupported
+- reason: that a main topic page with almost no details , includes lots of redirect links under the same url
 
 ## q18
 
@@ -71,8 +71,8 @@ the eval's), read it against its sources, fill `label:` (supported / unsupported
 - expected urls:
   - https://www.gov.il/he/service/income-tax-refund-for-employees
   - https://www.kolzchut.org.il/he/החזר_מס_הכנסה
-- label:
-- reason:
+- label:supported
+- reason: https://www.gov.il/he/service/income-tax-refund-for-employees - 404 , but the other link is detailed 
 
 ## q23
 
@@ -81,5 +81,5 @@ the eval's), read it against its sources, fill `label:` (supported / unsupported
 - expected urls:
   - https://www.gov.il/he/service/income-tax-refund-for-employees
   - https://www.kolzchut.org.il/he/החזר_מס_הכנסה
-- label:
-- reason:
+- label:supported
+- reason: https://www.gov.il/he/service/income-tax-refund-for-employees - 404 , but the other link is detailed 

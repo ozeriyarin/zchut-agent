@@ -1,1 +1,37 @@
-{"version": 1, "labels": {}}
+{
+  "version": 1,
+  "labels": {
+    "q04": {
+      "label": "supported",
+      "reason": "שכירים תושבי ישראל שפוטרו, התפטרו או הוצאו לחל\"ת (למינימום הימים הנדרשים)."
+    },
+    "q10": {
+      "label": "unsupported",
+      "reason": "לא מצויין מה קורה אם לא מתייצבים"
+    },
+    "q11": {
+      "label": "unsupported",
+      "reason": "that a main topic page with almost no details  , includes lots of redirect links under the same url"
+    },
+    "q13": {
+      "label": "unsupported",
+      "reason": "that a main topic page with almost no details , includes lots of redirect links under the same url"
+    },
+    "q15": {
+      "label": "unsupported",
+      "reason": "that a main topic page with almost no details , includes lots of redirect links under the same url"
+    },
+    "q17": {
+      "label": "unsupported",
+      "reason": "that a main topic page with almost no details , includes lots of redirect links under the same url"
+    },
+    "q18": {
+      "label": "supported",
+      "reason": "https://www.gov.il/he/service/income-tax-refund-for-employees - 404 , but the other link is detailed"
+    },
+    "q23": {
+      "label": "supported",
+      "reason": "https://www.gov.il/he/service/income-tax-refund-for-employees - 404 , but the other link is detailed"
+    }
+  }
+}
