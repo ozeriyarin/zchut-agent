@@ -116,6 +116,11 @@ function Step-Setup {
         Invoke-Gcloud projects add-iam-policy-binding $Project `
             --member "serviceAccount:$RunAs" --role $role --condition None
     }
+    # New projects build as the default compute account; the builder role lets it read the source and push.
+    $ProjectNumber = & gcloud projects describe $Project --format "value(projectNumber)"
+    Invoke-Gcloud projects add-iam-policy-binding $Project `
+        --member "serviceAccount:$ProjectNumber-compute@developer.gserviceaccount.com" `
+        --role roles/cloudbuild.builds.builder --condition None
 }
 
 function Step-Secrets {
