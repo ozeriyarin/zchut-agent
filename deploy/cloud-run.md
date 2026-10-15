@@ -1,7 +1,7 @@
 # Deploying the Telegram webhook to Cloud Run
 
 The owner runs these commands; the agent never deploys. `scripts/deploy.ps1` wraps the same
-commands (`.\scripts\deploy.ps1 -Step check|setup|secrets|build|deploy|webhook|all`). Its
+commands (`.\scripts\deploy.ps1 -Step check|setup|tighten|secrets|build|deploy|webhook|all`). Its
 parameters `-Project`, `-Region`, `-QdrantUrl` and `-AllowedChatIds` default to the environment
 variables `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_REGION`, `QDRANT_URL` and
 `TELEGRAM_ALLOWED_CHAT_IDS`, then to the same lines of the repo-root `.env` (it reads only these
@@ -23,6 +23,8 @@ $BillingAccount = "000000-000000-000000"   # gcloud billing accounts list
 $Service = "zchut-bot"
 $Repo = "zchut"
 $RunAs = "zchut-bot@$Project.iam.gserviceaccount.com"
+$BuildAs = "zchut-build@$Project.iam.gserviceaccount.com"
+$BuildBucket = "gs://$($Project)_cloudbuild"
 $QdrantUrl = "https://YOUR-CLUSTER.europe-west3-0.gcp.cloud.qdrant.io:6333"
 $AllowedChatIds = ""                        # "123,456"; empty lets everyone in
 $Image = "$Region-docker.pkg.dev/$Project/$Repo/$Service`:latest"
@@ -61,7 +63,7 @@ gcloud firestore fields ttls update expires_at --collection-group sessions --ena
 gcloud firestore fields ttls list --collection-group sessions
 ```
 
-## 3. Artifact Registry and the runtime service account
+## 3. Artifact Registry, the runtime account and the build account
 
 ```powershell
 gcloud artifacts repositories create $Repo --repository-format docker --location $Region
@@ -70,6 +72,39 @@ gcloud projects add-iam-policy-binding $Project --member "serviceAccount:$RunAs"
   --role roles/secretmanager.secretAccessor --condition None
 gcloud projects add-iam-policy-binding $Project --member "serviceAccount:$RunAs" `
   --role roles/datastore.user --condition None
+
+# the build account; the script skips the create and the bucket create when they already exist
+gcloud iam service-accounts create zchut-build --display-name "zchut Cloud Build"
+gcloud storage buckets create $BuildBucket --location $Region --uniform-bucket-level-access
+gcloud projects add-iam-policy-binding $Project --member "serviceAccount:$BuildAs" `
+  --role roles/logging.logWriter --condition None
+gcloud storage buckets add-iam-policy-binding $BuildBucket --member "serviceAccount:$BuildAs" `
+  --role roles/storage.objectViewer
+gcloud storage buckets add-iam-policy-binding $BuildBucket --member "serviceAccount:$BuildAs" `
+  --role roles/storage.objectCreator
+gcloud artifacts repositories add-iam-policy-binding $Repo --location $Region `
+  --member "serviceAccount:$BuildAs" --role roles/artifactregistry.writer
+```
+
+### Why a dedicated build account
+
+New projects run Cloud Build as the default compute service account, and the earlier setup gave
+that account `roles/cloudbuild.builds.builder` on the whole project: every VM or service that
+falls back to the default account could then read every bucket, push to every registry and start
+builds. `zchut-build` holds only what one build needs: read the uploaded source and write the build
+log in `$BuildBucket`, write log entries, and push to the one `zchut` repository. A leaked build
+step can then touch nothing else.
+
+`.\scripts\deploy.ps1 -Step tighten` moves a project that was set up before this change: it
+revokes `roles/cloudbuild.builds.builder` from `<project number>-compute@developer.gserviceaccount.com`
+when that account holds it (and says so when it does not), then runs the build-account commands
+above. It is safe to re-run; `-Step all` runs it right after `setup`.
+
+```powershell
+$Number = gcloud projects describe $Project --format "value(projectNumber)"
+gcloud projects remove-iam-policy-binding $Project `
+  --member "serviceAccount:$Number-compute@developer.gserviceaccount.com" `
+  --role roles/cloudbuild.builds.builder --all
 ```
 
 ## 4. Secrets in Secret Manager
@@ -91,11 +126,14 @@ foreach ($name in "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "QDRANT_API_K
 ## 5. Build with Cloud Build
 
 ```powershell
-gcloud builds submit --region $Region --tag $Image .
+gcloud builds submit --region $Region --tag $Image `
+  --service-account "projects/$Project/serviceAccounts/$BuildAs" --gcs-log-dir "$BuildBucket/logs" .
 ```
 
-The setup step grants the default compute account `roles/cloudbuild.builds.builder`; without it the
-(new projects build as the default compute service account).
+The build runs as `zchut-build` (section 3), not the default compute account. Cloud Build refuses
+a build with its own service account unless the logs have a home: `--tag` builds have no logging
+option, so `--gcs-log-dir` puts them in the same bucket as the source, and they still reach Cloud
+Logging through `roles/logging.logWriter`.
 
 ## 6. Deploy
 
@@ -151,7 +189,7 @@ zchut cost --source firestore --days 7   # needs GOOGLE_CLOUD_PROJECT in .env
 ## Redeploy, pause, remove
 
 ```powershell
-gcloud builds submit --region $Region --tag $Image .; .\scripts\deploy.ps1 -Step deploy
+.\scripts\deploy.ps1 -Step build; .\scripts\deploy.ps1 -Step deploy
 Invoke-RestMethod -Method Post -Uri "https://api.telegram.org/bot$Token/deleteWebhook"   # pause
 gcloud run services delete $Service --region $Region                                      # remove
 ```

@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("check", "setup", "secrets", "build", "deploy", "webhook", "all")]
+    [ValidateSet("check", "setup", "tighten", "secrets", "build", "deploy", "webhook", "all")]
     [string]$Step = "all",
     [string]$Project = "",
     [string]$Region = "",
@@ -48,10 +48,13 @@ if (-not $PSBoundParameters.ContainsKey("AllowedChatIds")) { $AllowedChatIds = G
 $Service = "zchut-bot"
 $Repo = "zchut"
 $ServiceAccount = "zchut-bot"
+$BuildAccount = "zchut-build"
 $BudgetUsd = 2
 
 $Image = "$Region-docker.pkg.dev/$Project/$Repo/$Service`:latest"
 $RunAs = "$ServiceAccount@$Project.iam.gserviceaccount.com"
+$BuildAs = "$BuildAccount@$Project.iam.gserviceaccount.com"
+$BuildBucket = "gs://$($Project)_cloudbuild"
 $SecretNames = @(
     "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "QDRANT_API_KEY",
     "VOYAGE_API_KEY", "ZCHUT_ANTHROPIC_API_KEY"
@@ -62,13 +65,17 @@ function Invoke-Gcloud {
     if ($LASTEXITCODE -ne 0) { throw "gcloud $($args -join ' ') failed" }
 }
 
+# cmd swallows gcloud's stderr so PowerShell 5.1/7 never turns NOT_FOUND into an error record
+function Test-Gcloud([string]$Command) {
+    cmd /c "gcloud $Command >nul 2>&1"
+    return $LASTEXITCODE -eq 0
+}
+
 function Set-Secret([string]$Name, [string]$Value) {
     $tmp = New-TemporaryFile
     try {
         [IO.File]::WriteAllText($tmp, $Value)
-        # cmd swallows gcloud's stderr so PowerShell 5.1/7 never turns NOT_FOUND into an error record
-        cmd /c "gcloud secrets describe $Name --project $Project >nul 2>&1"
-        if ($LASTEXITCODE -ne 0) {
+        if (-not (Test-Gcloud "secrets describe $Name --project $Project")) {
             Invoke-Gcloud secrets create $Name --project $Project --replication-policy automatic
         }
         Invoke-Gcloud secrets versions add $Name --project $Project --data-file $tmp
@@ -116,11 +123,44 @@ function Step-Setup {
         Invoke-Gcloud projects add-iam-policy-binding $Project `
             --member "serviceAccount:$RunAs" --role $role --condition None
     }
-    # New projects build as the default compute account; the builder role lets it read the source and push.
-    $ProjectNumber = & gcloud projects describe $Project --format "value(projectNumber)"
-    Invoke-Gcloud projects add-iam-policy-binding $Project `
-        --member "serviceAccount:$ProjectNumber-compute@developer.gserviceaccount.com" `
-        --role roles/cloudbuild.builds.builder --condition None
+    Grant-BuildAccount
+}
+
+function Grant-BuildAccount {
+    if (-not (Test-Gcloud "iam service-accounts describe $BuildAs --project $Project")) {
+        Invoke-Gcloud iam service-accounts create $BuildAccount --project $Project `
+            --display-name "zchut Cloud Build"
+    }
+    if (-not (Test-Gcloud "storage buckets describe $BuildBucket --project $Project")) {
+        Invoke-Gcloud storage buckets create $BuildBucket --project $Project --location $Region `
+            --uniform-bucket-level-access
+    }
+    $member = "serviceAccount:$BuildAs"
+    Invoke-Gcloud projects add-iam-policy-binding $Project --member $member `
+        --role roles/logging.logWriter --condition None
+    foreach ($role in @("roles/storage.objectViewer", "roles/storage.objectCreator")) {
+        Invoke-Gcloud storage buckets add-iam-policy-binding $BuildBucket `
+            --member $member --role $role
+    }
+    Invoke-Gcloud artifacts repositories add-iam-policy-binding $Repo --project $Project `
+        --location $Region --member $member --role roles/artifactregistry.writer
+}
+
+function Step-Tighten {
+    $number = (& gcloud projects describe $Project --format "value(projectNumber)") -join ""
+    if ($LASTEXITCODE -ne 0 -or -not $number) { throw "cannot read the project number of $Project" }
+    $compute = "serviceAccount:$number-compute@developer.gserviceaccount.com"
+    $role = "roles/cloudbuild.builds.builder"
+    $held = & gcloud projects get-iam-policy $Project --flatten "bindings[].members" `
+        --filter "bindings.role=$role AND bindings.members=$compute" --format "value(bindings.role)"
+    if ($LASTEXITCODE -ne 0) { throw "cannot read the IAM policy of $Project" }
+    if ($held) {
+        Invoke-Gcloud projects remove-iam-policy-binding $Project `
+            --member $compute --role $role --all
+    } else {
+        Write-Host "Skipping revoke: $compute does not hold $role."
+    }
+    Grant-BuildAccount
 }
 
 function Step-Secrets {
@@ -166,7 +206,9 @@ function Step-Check {
 }
 
 function Step-Build {
-    Invoke-Gcloud builds submit --project $Project --region $Region --tag $Image .
+    Invoke-Gcloud builds submit --project $Project --region $Region --tag $Image `
+        --service-account "projects/$Project/serviceAccounts/$BuildAs" `
+        --gcs-log-dir "$BuildBucket/logs" .
 }
 
 function Step-Deploy {
@@ -199,9 +241,10 @@ function Step-Webhook {
 switch ($Step) {
     "check" { Step-Check }
     "setup" { Step-Setup }
+    "tighten" { Step-Tighten }
     "secrets" { Step-Secrets }
     "build" { Step-Build }
     "deploy" { Step-Deploy }
     "webhook" { Step-Webhook }
-    "all" { Step-Check; Step-Setup; Step-Secrets; Step-Build; Step-Deploy; Step-Webhook }
+    "all" { Step-Check; Step-Setup; Step-Tighten; Step-Secrets; Step-Build; Step-Deploy; Step-Webhook }
 }
