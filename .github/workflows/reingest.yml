@@ -1,0 +1,63 @@
+name: weekly re-ingest
+
+on:
+  workflow_dispatch:
+    inputs:
+      probe_only:
+        description: "Only test whether kolzchut answers from this runner"
+        type: boolean
+        default: true
+  schedule:
+    - cron: "0 3 * * 0"
+
+permissions:
+  contents: write
+
+jobs:
+  reingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe kolzchut from this runner
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
+            -A 'zchut-agent/0.1 (+mailto:ozeriyarin@gmail.com)' \
+            'https://www.kolzchut.org.il/api.php?action=query&meta=siteinfo&siprop=statistics&format=json')
+          echo "kolzchut api status: $code"
+          echo "KOLZCHUT_STATUS=$code" >> "$GITHUB_ENV"
+          test "$code" = "200"
+
+      - name: Set up Python
+        if: ${{ !inputs.probe_only }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        if: ${{ !inputs.probe_only }}
+        run: pip install -q -e .
+
+      - name: Crawl and report
+        if: ${{ !inputs.probe_only }}
+        env:
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          QDRANT_URL: ${{ secrets.QDRANT_URL }}
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.ZCHUT_TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALLOWED_CHAT_IDS: ${{ secrets.ZCHUT_TELEGRAM_ALLOWED_CHAT_IDS }}
+          PYTHONUTF8: "1"
+        run: |
+          zchut crawl run --max-minutes 60 --max-usd 0.30 || test $? -eq 2
+          zchut crawl report --notify
+
+      - name: Commit manifest and crawl record
+        if: ${{ !inputs.probe_only }}
+        run: |
+          git config user.name "zchut-reingest[bot]"
+          git config user.email "zchut-reingest@users.noreply.github.com"
+          git add data/manifest.json runs/*-crawl.json
+          git diff --cached --quiet && echo "nothing to commit" && exit 0
+          git commit -m "crawl: $(date -u +%F)"
+          git push
