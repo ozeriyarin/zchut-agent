@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from zchut.answer.model import AnswerError, haiku_json
 from zchut.graph.clarifications import Clarifications
-from zchut.graph.state import Classification, Topic
+from zchut.graph.state import Classification, Intent, Topic
 from zchut.run.cost_guard import CostGuard
 from zchut.tokens import estimate_tokens
 from zchut.types import Usage
@@ -22,7 +22,9 @@ CLASSIFY_SYSTEM = (
     "office_lookup: true רק כשהשאלה מבקשת איפה נמצא משרד או איך יוצרים איתו קשר. "
     "missing_fact: מפתח אחד מהרשימה שלמטה, רק כשהשאלה היא על סכום או על משך תקופה, "
     "התשובה משתנה לפי העובדה, והנושא מופיע בנושאים של המפתח; אחרת null. "
-    "אל תבקש הבהרה לעולם על שאלות זכאות (מי זכאי), איך עושים, איפה, או אילו מסמכים צריך."
+    "אל תבקש הבהרה לעולם על שאלות זכאות (מי זכאי), איך עושים, איפה, או אילו מסמכים צריך. "
+    "intent: greeting לברכה בלבד (היי, שלום), reaction לתגובה שאינה שאלה (תודה, אוקי), "
+    "question לכל השאר."
 )
 _TOPIC_WORDS: list[tuple[Topic, re.Pattern[str]]] = [
     ("unemployment", re.compile(r"אבטלה|תעסוקה|פיטורי|התפטר")),
@@ -31,6 +33,8 @@ _TOPIC_WORDS: list[tuple[Topic, re.Pattern[str]]] = [
 ]
 _AMOUNT = re.compile(r"כמה.*(?:אקבל|מגיע)|גובה")
 _OFFICE = re.compile(r"(?:איפה|היכן).{0,20}(?:משרד|לשכ|סניף)|ליצור קשר|פרטי (?:ה)?קשר")
+_GREETING = re.compile(r"(?:היי|הי|שלום|בוקר טוב)[\s!.,]*")
+_REACTION = re.compile(r"(?:תודה|אוקיי?)[\s!.,]*")
 
 
 def classify_system(clarifications: Clarifications) -> str:
@@ -50,8 +54,9 @@ def classify_schema(clarifications: Clarifications) -> dict[str, object]:
             "in_scope": {"type": "boolean"},
             "office_lookup": {"type": "boolean"},
             "missing_fact": fact,
+            "intent": {"type": "string", "enum": list(get_args(Intent))},
         },
-        "required": ["topic", "in_scope", "office_lookup", "missing_fact"],
+        "required": ["topic", "in_scope", "office_lookup", "missing_fact", "intent"],
         "additionalProperties": False,
     }
 
@@ -107,6 +112,17 @@ def fake_topic(text: str) -> Topic:
     return next((t for t, words in _TOPIC_WORDS if words.search(text)), "other")
 
 
+def asks_office(text: str) -> bool:
+    return bool(_OFFICE.search(text))
+
+
+def fake_intent(text: str) -> Intent:
+    t = text.strip()
+    if _GREETING.fullmatch(t):
+        return "greeting"
+    return "reaction" if _REACTION.fullmatch(t) else "question"
+
+
 def fake_classification(text: str) -> Classification:
     topic = fake_topic(text)
     amount = _AMOUNT.search(text) and not re.search(r"שכיר|עצמאי", text)
@@ -115,5 +131,6 @@ def fake_classification(text: str) -> Classification:
         topic=topic,
         in_scope=topic != "other",
         missing_fact=missing,
-        office_lookup=bool(_OFFICE.search(text)),
+        office_lookup=asks_office(text),
+        intent=fake_intent(text),
     )

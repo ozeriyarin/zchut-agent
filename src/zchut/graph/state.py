@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from zchut.types import Answer, CallRecord, Hit
 
 Topic = Literal["unemployment", "pension", "tax", "other"]
+Intent = Literal["question", "greeting", "reaction"]
 HISTORY_CAP = 6
 
 
@@ -16,6 +17,7 @@ class Classification(BaseModel):
     in_scope: bool
     missing_fact: str | None = None
     office_lookup: bool = False
+    intent: Intent = "question"
 
 
 class Session(BaseModel):
@@ -41,6 +43,8 @@ class ConversationState(BaseModel):
     in_scope: bool | None = None
     missing_fact: str | None = None
     office_lookup: bool = False
+    asks_office: bool = False
+    intent: Intent = "question"
     clarified: bool = False
     can_clarify: bool = True
     hits: list[Hit] = []

@@ -58,5 +58,16 @@
       {"message": "אוקיי, איפה נמצא המשרד שלהם?", "expect": "office"},
       {"message": "מה קשור?", "expect": "nudge"}
     ]
+  },
+  {
+    "id": "c6-greeting",
+    "turns": [
+      {"message": "היי", "expect": "nudge"},
+      {
+        "message": "מי זכאי לדמי אבטלה?",
+        "expect": "answer",
+        "expected_urls": ["https://www.kolzchut.org.il/he/דמי_אבטלה"]
+      }
+    ]
   }
 ]

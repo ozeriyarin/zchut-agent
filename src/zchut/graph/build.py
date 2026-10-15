@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
@@ -15,8 +15,8 @@ from zchut.answer.citations import display_hits, render
 from zchut.answer.prompt import SYSTEM_PROMPT
 from zchut.answer.refusal import REFUSAL_SENTENCE, should_refuse
 from zchut.graph.clarifications import Clarifications, applicable
-from zchut.graph.classify import Classifier
-from zchut.graph.condense import NUDGE_LINE, Condenser, Turns
+from zchut.graph.classify import Classifier, asks_office
+from zchut.graph.condense import GREETING_LINE, NUDGE_LINE, Condenser, Turns
 from zchut.graph.offices import Office, escalation_text, office_line
 from zchut.graph.state import HISTORY_CAP, ConversationState, Session, Topic, Verdict
 from zchut.graph.verify import Verifier
@@ -102,6 +102,8 @@ def build_graph(deps: GraphDeps, guard: CostGuard) -> Graph:
             "in_scope": c.in_scope,
             "missing_fact": applicable(c.missing_fact, c.topic, deps.clarifications),
             "office_lookup": c.office_lookup and c.topic != "other",
+            "asks_office": c.office_lookup or asks_office(s.standalone),
+            "intent": c.intent,
         }
 
     def clarify(s: ConversationState) -> Update:
@@ -128,7 +130,10 @@ def build_graph(deps: GraphDeps, guard: CostGuard) -> Graph:
 
     def final(s: ConversationState) -> Update:
         assert s.draft is not None
-        return {"final": render(s.draft)}
+        draft, office = s.draft, deps.offices[s.topic or "other"]
+        if s.asks_office:
+            draft = replace(draft, text=f"{draft.text}\n\n{office_line(office)}")
+        return {"draft": draft, "final": render(draft)}
 
     def escalate(s: ConversationState) -> Update:
         office = deps.offices[s.topic or "other"]
@@ -141,7 +146,7 @@ def build_graph(deps: GraphDeps, guard: CostGuard) -> Graph:
         return {"final": REFUSAL_SENTENCE}
 
     def nudge(s: ConversationState) -> Update:
-        return {"final": NUDGE_LINE}
+        return {"final": GREETING_LINE if s.intent == "greeting" else NUDGE_LINE}
 
     def after_start(s: ConversationState) -> str:
         return "condense" if condensing(s) else "classify"
@@ -150,6 +155,8 @@ def build_graph(deps: GraphDeps, guard: CostGuard) -> Graph:
         return "classify" if s.is_question else "nudge"
 
     def after_classify(s: ConversationState) -> str:
+        if s.intent != "question" and s.pending_clarification is None:
+            return "nudge"
         if not s.in_scope:
             return "refuse"
         if s.office_lookup:
@@ -180,7 +187,7 @@ def build_graph(deps: GraphDeps, guard: CostGuard) -> Graph:
     graph.add_conditional_edges(START, after_start, ["condense", "classify"])
     graph.add_conditional_edges("condense", after_condense, ["classify", "nudge"])
     graph.add_conditional_edges(
-        "classify", after_classify, ["refuse", "escalate", "clarify", "retrieve"]
+        "classify", after_classify, ["nudge", "refuse", "escalate", "clarify", "retrieve"]
     )
     graph.add_edge("clarify", "condense")
     graph.add_conditional_edges("retrieve", after_retrieve, ["refuse", "answer"])

@@ -23,26 +23,28 @@ from test_tiers import anthropic_client
 from zchut.answer.citations import display_hits, resolve, sources_block
 from zchut.answer.model import FakeAnswerModel
 from zchut.answer.refusal import REFUSAL_SENTENCE
+from zchut.answer.render import clean_answer, render_html
 from zchut.cli import app
 from zchut.config import ConfigError, Prices
-from zchut.eval.conversations import load_conversations
+from zchut.eval.conversations import load_conversations, turn_outcome
 from zchut.graph.build import converse
 from zchut.graph.clarifications import load_clarifications
-from zchut.graph.classify import FakeClassifier, classify_system
+from zchut.graph.classify import FakeClassifier, classify_schema, classify_system
 from zchut.graph.condense import (
     CONDENSE_SCHEMA,
     CONDENSE_SYSTEM,
+    GREETING_LINE,
     NUDGE_LINE,
     FakeCondenser,
     HaikuCondenser,
     Turns,
 )
 from zchut.graph.offices import ESCALATION_HEAD, load_offices, office_line
-from zchut.graph.state import Classification, Session
+from zchut.graph.state import Classification, Session, Topic
 from zchut.graph.verify import FakeVerifier
 from zchut.index.store import InMemoryVectorStore
 from zchut.run.ask import retrieve
-from zchut.run.converse import record_state, take_turn
+from zchut.run.converse import record_state, run_conversation, take_turn
 from zchut.run.cost_guard import CostGuard
 from zchut.run.records import question_hash
 from zchut.types import Hit
@@ -196,15 +198,15 @@ def test_criterion_6_conversation_eval_dry_run_scores_every_turn(cli_root: Path)
     """criterion 6: "`zchut eval --conversations --dry-run` runs the five live conversations with the expected outcomes per turn and reports turn accuracy; the suite asserts 100% on the fakes." """
     facts = load_clarifications(CLARIFICATIONS)
     found = load_conversations(ROOT / "eval" / "conversations.json", facts)
-    assert len(found) == 5
+    assert len(found) == 6
     expects = {t.expect for c in found for t in c.turns}
     assert expects == {"answer", "clarify:employment_status", "nudge", "office"}
     result = runner.invoke(app, ["eval", "--conversations", "--dry-run"])
     assert result.exit_code == 0, result.output
-    assert "דיוק תורות: 1.00 (11/11)" in result.output
+    assert "דיוק תורות: 1.00 (13/13)" in result.output
     report_path = next((cli_root / "runs").glob("*-conversations-report.json"))
     report = json.loads(report_path.read_text("utf-8"))
-    assert (report["conversations"], report["turns"], report["turn_accuracy"]) == (5, 11, 1.0)
+    assert (report["conversations"], report["turns"], report["turn_accuracy"]) == (6, 13, 1.0)
     assert all(r["correct"] and r["outcome"] == r["expect"] for r in report["rows"])
 
     bad = cli_root / "bad.json"
@@ -233,4 +235,90 @@ def test_criterion_8_v4b_pytest_passes_every_criterion_quoted() -> None:
     """criterion 8: "`pytest` passes; every criterion has a test whose name quotes it." """
     from test_spec_coverage import criteria
 
-    assert len(criteria("2026-10-15-zchut-v4b-conversation-quality")) == 8
+    assert len(criteria("2026-10-15-zchut-v4b-conversation-quality")) == 11
+
+
+def test_criterion_9_greeting_on_the_first_turn_gets_the_welcome_line(
+    fixture_store: InMemoryVectorStore, priced: Prices
+) -> None:
+    """criterion 9: "A greeting or reaction on the first turn gets the fixed welcome line with no retrieval or answer call." """
+    facts = load_clarifications(CLARIFICATIONS)
+    assert classify_schema(facts)["required"] == [
+        "topic",
+        "in_scope",
+        "office_lookup",
+        "missing_fact",
+        "intent",
+    ]
+    assert "intent: greeting לברכה בלבד" in classify_system(facts)
+    bot = Bot(fixture_store, priced, process_inline=True)
+    assert bot.say("היי") == escape(GREETING_LINE, quote=False)
+    assert bot.say("תודה!") == escape(NUDGE_LINE, quote=False)
+    assert "<b>מקורות:</b>" in bot.say(ELIGIBLE)
+    runs = bot.runs()
+    assert [r["bot_event"] for r in runs] == ["nudge", "nudge", "answer"]
+    assert [[c["role"] for c in r["calls"]] for r in runs[:2]] == [["classify"], ["classify"]]
+    assert bot.model.calls == 1 and bot.session()["history"] == [ELIGIBLE]
+
+    deps = make_graph_deps(fixture_store, FakeAnswerModel(), 0.3, None)
+    asked, session = take_turn(deps, make_guard(priced), AMOUNT, Session())
+    state, _ = take_turn(deps, make_guard(priced), "שלום", session)
+    assert "nudge" not in state.path and state.clarified
+
+
+class OfficeMissed(FakeClassifier):
+    def __init__(self, topic: Topic, flagged: bool) -> None:
+        super().__init__()
+        self.topic, self.flagged = topic, flagged
+
+    def classify(self, text: str, guard: CostGuard) -> Classification:
+        return Classification(topic=self.topic, in_scope=True, office_lookup=self.flagged)
+
+
+@pytest.mark.parametrize(
+    ("topic", "flagged", "question"),
+    [
+        ("unemployment", False, "איפה נמצא הסניף של שירות התעסוקה?"),
+        ("other", True, "איך פונים לגבי דמי אבטלה?"),
+    ],
+    ids=["condensed-question-asks", "classifier-flag-unknown-topic"],
+)
+def test_criterion_10_office_question_from_corpus_ends_with_the_office(
+    fixture_store: InMemoryVectorStore, priced: Prices, topic: Topic, flagged: bool, question: str
+) -> None:
+    """criterion 10: "An office question answered from the corpus still ends with the office's name and contact page." """
+    base = make_graph_deps(fixture_store, FakeAnswerModel(), 0.3, FakeVerifier())
+    deps = replace(base, classifier=OfficeMissed(topic, flagged))
+    state = converse(deps, make_guard(priced), question, [], None)
+    assert state.path == ["classify", "retrieve", "answer", "verify", "final"]
+    line = office_line(load_offices(OFFICES)[topic])
+    assert state.final is not None and state.draft is not None
+    assert state.final.split("\n\nמקורות:\n")[0].endswith(f"\n\n{line}")
+    assert render_html(state.draft).split("\n\n<b>מקורות:</b>")[0].endswith(escape(line))
+    assert turn_outcome(state) == "office"
+
+    plain = converse(base, make_guard(priced), ELIGIBLE, [], None)
+    assert plain.final is not None and "כדאי לפנות ל" not in plain.final
+    assert turn_outcome(plain) == "answer"
+
+
+@pytest.mark.parametrize(
+    ("raw", "clean", "scrubbed"),
+    [
+        ("דמי 실업אבטלה [1].", "דמי אבטלה [1].", 1),
+        ("תשובה 中文 ו-Привет ok [2].", "תשובה  ו- ok [2].", 2),
+        ("שָׁלוֹם café 15% ₪200 ✓ [1].", "שָׁלוֹם café 15% ₪200 ✓ [1].", 0),
+    ],
+    ids=["hangul-mid-word", "cjk-and-cyrillic", "hebrew-latin-symbols-kept"],
+)
+def test_criterion_11_foreign_script_scrubbed_and_counted(
+    fixture_store: InMemoryVectorStore, priced: Prices, raw: str, clean: str, scrubbed: int
+) -> None:
+    """criterion 11: "Characters outside Hebrew, Latin, digits and punctuation are removed from the answer and counted in the record." """
+    assert clean_answer(raw) == (clean, 0, scrubbed)
+    model = FakeAnswerModel(canned=f"**{raw}**")
+    deps = make_graph_deps(fixture_store, model, 0.3, FakeVerifier())
+    guard = make_guard(priced)
+    assert run_conversation(ELIGIBLE, [], deps, guard, None).exit_code == 0
+    record = guard.recorder.record
+    assert (record.scrubbed, record.markdown_stripped) == (scrubbed, 2)

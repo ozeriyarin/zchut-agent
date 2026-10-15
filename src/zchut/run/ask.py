@@ -31,8 +31,9 @@ def retrieve(question: str, deps: AskDeps, guard: CostGuard) -> list[Hit]:
 def respond(question: str, hits: list[Hit], deps: AskDeps, guard: CostGuard) -> Answer:
     if should_refuse(hits, deps.min_score):
         return Answer(text=REFUSAL_SENTENCE, citations=(), refused=True)
-    text, stripped = clean_answer(guard.answer(deps.model, build_prompt(question, hits)))
-    return replace(resolve(text, hits), markdown_stripped=stripped)
+    raw = guard.answer(deps.model, build_prompt(question, hits))
+    text, stripped, scrubbed = clean_answer(raw)
+    return replace(resolve(text, hits), markdown_stripped=stripped, scrubbed=scrubbed)
 
 
 def run_ask(question: str, deps: AskDeps, guard: CostGuard) -> Outcome:
@@ -46,6 +47,7 @@ def run_ask(question: str, deps: AskDeps, guard: CostGuard) -> Outcome:
         record.refused = answer.refused
         record.dropped_citations = answer.dropped_citations
         record.markdown_stripped = answer.markdown_stripped
+        record.scrubbed = answer.scrubbed
         return answer.text if answer.refused else render(answer)
 
     return guarded(guard.recorder, action)

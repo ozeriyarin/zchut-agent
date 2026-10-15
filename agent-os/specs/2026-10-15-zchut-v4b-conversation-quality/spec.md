@@ -27,9 +27,21 @@ A multi-turn chat behaves like a clerk who remembers the last thing you said: fo
 6. `zchut eval --conversations --dry-run` runs the five live conversations with the expected outcomes per turn and reports turn accuracy; the suite asserts 100% on the fakes.
 7. The record stores the standalone question as a hash only, never its text, together with `bot_event` and `office_lookup` (redaction test).
 8. `pytest` passes; every criterion has a test whose name quotes it.
+9. A greeting or reaction on the first turn gets the fixed welcome line with no retrieval or answer call.
+10. An office question answered from the corpus still ends with the office's name and contact page.
+11. Characters outside Hebrew, Latin, digits and punctuation are removed from the answer and counted in the record.
 
 ## Tasks
 
 1. `condense` node + prompt + schema + fake; `config/clarifications.json`; classify prompt and enum; session `clarified_once`; office lookup branch; citation renumbering.
 2. Bot webhook and CLI `chat` wired to the new flow; records.
 3. `eval/conversations.json` (5 conversations), `zchut eval --conversations`, tests for criteria 1–7, README "Conversations" paragraph, roadmap closeout.
+
+## Addendum v4c (2026-10-15)
+
+From the second live Telegram session. Criteria 9–11 above; the spec-coverage test reads only the acceptance criteria list, so they are numbered there.
+
+- **Greeting** (criterion 9): the classifier schema gains `intent: question | greeting | reaction`. A greeting or reaction with nothing pending goes to `nudge`: greeting gets the fixed welcome line, reaction the existing nudge line; no retrieval, no answer call, `bot_event: 'nudge'`. The fake classifier matches a short word list (היי, שלום, הי, בוקר טוב, תודה, אוקי).
+- **Office line on corpus answers** (criterion 10): when the classifier marks `office_lookup` or the condensed question asks where or how to contact an office, and the graph still takes the retrieval path, `final` appends the office line (name and contact page from `config/offices.json` for the topic) after the answer text and before the sources. Routing is unchanged.
+- **Foreign-script scrub** (criterion 11): `clean_answer` drops every run of letters or marks outside the Hebrew and Latin scripts (Hangul, CJK, Cyrillic tokens) and the record counts the runs in `scrubbed`.
+- **Eval**: a sixth conversation opens with a greeting (`nudge`); an `office` turn is correct only when the final text holds the office line.

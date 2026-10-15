@@ -15,6 +15,7 @@ def record_state(record: RunRecord, deps: GraphDeps, state: ConversationState) -
     record.refused = "refuse" in state.path
     record.dropped_citations = state.draft.dropped_citations if state.draft else 0
     record.markdown_stripped = state.draft.markdown_stripped if state.draft else 0
+    record.scrubbed = state.draft.scrubbed if state.draft else 0
     record.graph = GraphRecord(
         path=state.path,
         tier=deps.tier,

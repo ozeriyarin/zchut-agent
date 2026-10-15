@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 from zchut.config import ConfigError
 from zchut.graph.build import GraphDeps
 from zchut.graph.clarifications import Clarifications
-from zchut.graph.state import ConversationState, Session
+from zchut.graph.offices import Office, office_line
+from zchut.graph.state import ConversationState, Session, Topic
 from zchut.run.converse import take_turn
 from zchut.run.cost_guard import CostGuard, Outcome, guarded
 
@@ -60,22 +61,26 @@ def turn_outcome(state: ConversationState) -> str:
     for outcome in ("nudge", "refuse"):
         if outcome in state.path:
             return outcome
-    if state.office_lookup:
-        return "office"
-    return "escalate" if state.escalation is not None else "answer"
+    if state.escalation is not None:
+        return "escalate"
+    return "office" if state.office_lookup or state.asks_office else "answer"
 
 
-def _row(row_id: str, turn: ConversationTurn, state: ConversationState) -> TurnRow:
+def _row(
+    row_id: str, turn: ConversationTurn, state: ConversationState, offices: dict[Topic, Office]
+) -> TurnRow:
     shown = state.draft.citations if state.draft and state.escalation is None else ()
     cited = list(dict.fromkeys(c.chunk.url for c in shown))
     outcome = turn_outcome(state)
     sourced = not turn.expected_urls or bool(set(cited) & set(turn.expected_urls))
+    line = office_line(offices[state.topic or "other"])
+    listed = turn.expect != "office" or line in (state.final or "")
     return TurnRow(
         id=row_id,
         expect=turn.expect,
         outcome=outcome,
         cited_urls=cited,
-        correct=outcome == turn.expect and sourced,
+        correct=outcome == turn.expect and sourced and listed,
     )
 
 
@@ -100,7 +105,7 @@ def run_conversations(
             session = Session()
             for n, turn in enumerate(conversation.turns, start=1):
                 state, session = take_turn(deps, guard, turn.message, session)
-                rows.append(_row(f"{conversation.id}.{n}", turn, state))
+                rows.append(_row(f"{conversation.id}.{n}", turn, state, deps.offices))
         accuracy = sum(r.correct for r in rows) / len(rows) if rows else 0.0
         report = ConversationReport(
             conversations=len(conversations), turns=len(rows), turn_accuracy=accuracy, rows=rows

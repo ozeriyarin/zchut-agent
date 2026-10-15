@@ -200,7 +200,7 @@ def test_haiku_model_calls_messages_api_with_stubbed_transport() -> None:
     ids=["bold", "heading", "bullets", "blank-lines", "inline-markers-kept"],
 )
 def test_clean_answer(raw: str, clean: str, removed: int) -> None:
-    assert clean_answer(raw) == (clean, removed)
+    assert clean_answer(raw)[:2] == (clean, removed)
 
 
 def test_criterion_1_v4a_clean_answer_counted_in_record(

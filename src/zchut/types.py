@@ -81,6 +81,7 @@ class Answer:
     dropped_citations: int = 0
     refused: bool = False
     markdown_stripped: int = 0
+    scrubbed: int = 0
 
 
 @dataclass(frozen=True)
@@ -145,6 +146,7 @@ class RunRecord(BaseModel):
     refused: bool | None = None
     dropped_citations: int = 0
     markdown_stripped: int = 0
+    scrubbed: int = 0
     budget_exceeded: bool = False
     pages_indexed: int | None = None
     chunks_indexed: int | None = None

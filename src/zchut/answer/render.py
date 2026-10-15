@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from html import escape
+from itertools import groupby
 
 from zchut.answer.citations import (
     ATTRIBUTION_LINE,
@@ -16,10 +18,17 @@ _LEADING = re.compile(r"^[ \t]*(?:#{1,6}|[-*•])[ \t]+", re.M)
 _BLANKS = re.compile(r"\n(?:[ \t]*\n)+")
 
 
-def clean_answer(text: str) -> tuple[str, int]:
+def foreign(ch: str) -> bool:
+    script = unicodedata.name(ch, "").startswith(("HEBREW", "LATIN"))
+    return unicodedata.category(ch)[0] in "LM" and not script
+
+
+def clean_answer(text: str) -> tuple[str, int, int]:
+    runs = [(bad, "".join(g)) for bad, g in groupby(text, foreign)]
+    text = "".join(part for bad, part in runs if not bad)
     text, leading = _LEADING.subn("", text)
     text, bold = _BOLD.subn("", text)
-    return _BLANKS.sub("\n\n", text).strip(), leading + bold
+    return _BLANKS.sub("\n\n", text).strip(), leading + bold, sum(b for b, _ in runs)
 
 
 def render_html(answer: Answer) -> str:
