@@ -94,7 +94,7 @@ foreach ($name in "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "QDRANT_API_K
 gcloud builds submit --region $Region --tag $Image .
 ```
 
-If the push is refused, grant the build service account `roles/artifactregistry.writer`
+The setup step grants the default compute account `roles/cloudbuild.builds.builder`; without it the
 (new projects build as the default compute service account).
 
 ## 6. Deploy
