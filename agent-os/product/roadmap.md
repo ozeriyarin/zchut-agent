@@ -17,7 +17,12 @@ Each item is one spec in `agent-os/specs/`. Ship in order; each step is usable o
 
 ## Next
 
-1. **gov.il via its data API or a rendered fetch.** gov.il service pages are client-rendered, so v1 ingests kolzchut only; add gov.il through its data API or a headless rendered fetch.
+1. **v7: reranker.** A cross-encoder rerank step over the vector top-20 (Voyage `rerank-2-lite` through the same key, behind a `Reranker` interface with a fake), scored on the 30 questions; adopt only if the four pension misses improve without a hit@3 drop. Hybrid with a naive tokenizer lost (v5b); this is the credible path.
+2. **v8: full-corpus re-index with the LlamaIndex markdown chunker.** Re-chunk and re-embed the whole site into a second Qdrant collection and score the 30 questions on both, to settle the one-question difference from v6 properly; switch `chunk.engine` only on a win.
+3. **v9: MCP topic filter inside the store.** Store a `topic` keyword in chunk metadata at ingest and filter in Qdrant/Chroma instead of post-filtering the top 200.
+4. **v10: dedicated build account.** Cloud Build runs as its own service account with read on the source bucket and write on the one registry; revoke the broad builder role from the default compute account (flagged by the security review).
+5. **v11: small-model fine-tune.** Once the conversation eval has a few hundred labelled turns, fine-tune a small open model for the verifier or the condense step and score it against Haiku and Jev on the frozen sets; swap in behind the interface only on a win.
+6. **gov.il via its data API or a rendered fetch.** gov.il service pages are client-rendered, so v1 ingests kolzchut only; add gov.il through its data API or a headless rendered fetch.
 
 ## Operations
 
