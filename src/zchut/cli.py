@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated, cast, get_args
+from urllib.parse import urlparse
 
 import anthropic
 import click
@@ -244,10 +245,20 @@ def _live_fetcher(settings: Settings) -> FetcherRouter:
     return FetcherRouter({"kolzchut.org.il": _wiki(settings)}, web)
 
 
+def qdrant_port(url: str) -> int:
+    """Explicit port wins; else 443 for https (the sandbox proxy resets 6333), 6333 for http."""
+    parsed = urlparse(url)
+    if parsed.port:
+        return parsed.port
+    return 443 if parsed.scheme == "https" else 6333
+
+
 def _qdrant(ctx: Context) -> QdrantStore:
     secrets = ctx.secrets
+    url = secrets.require("QDRANT_URL")
     client = QdrantClient(
-        url=secrets.require("QDRANT_URL"),
+        url=url,
+        port=qdrant_port(url),
         api_key=secrets.require("QDRANT_API_KEY"),
         timeout=ctx.settings.store.timeout_s,
     )

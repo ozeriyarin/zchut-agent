@@ -90,3 +90,12 @@ def test_store_migrate_command_copies_chroma_into_qdrant(
     monkeypatch.delenv("QDRANT_API_KEY")
     result = runner.invoke(cli.app, ["store", "migrate"])
     assert result.exit_code == 1 and "QDRANT_API_KEY" in result.output
+
+
+def test_qdrant_port_defaults_to_443_for_https_without_a_port() -> None:
+    from zchut.cli import qdrant_port
+
+    assert qdrant_port("https://x.cloud.qdrant.io") == 443
+    assert qdrant_port("https://x.cloud.qdrant.io:6333") == 6333
+    assert qdrant_port("http://localhost") == 6333
+    assert qdrant_port("https://x.cloud.qdrant.io:8443/") == 8443
