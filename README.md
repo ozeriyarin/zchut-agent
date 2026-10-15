@@ -473,7 +473,8 @@ Weekly re-ingest of the zchut-agent index (repo already checked out, branch main
 ```
 
 Environment variables of the routine's environment: `VOYAGE_API_KEY`, `QDRANT_URL`,
-`QDRANT_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS` (one id). Network allow list:
+`QDRANT_API_KEY`, `ZCHUT_TELEGRAM_BOT_TOKEN`, `ZCHUT_TELEGRAM_ALLOWED_CHAT_IDS` (one id). The `ZCHUT_`
+names take precedence over the plain ones, so the environment can be shared with another bot. Network allow list:
 `kolzchut.org.il`, `api.voyageai.com`, the Qdrant cluster host, `api.telegram.org`, `pypi.org`,
 `files.pythonhosted.org`, `github.com`.
 

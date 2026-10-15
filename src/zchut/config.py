@@ -174,9 +174,13 @@ class Secrets(BaseModel):
             openrouter_api_key=env.get("OPENROUTER_API_KEY") or None,
             vllm_url=env.get("ZCHUT_VLLM_URL") or None,
             vllm_api_key=env.get("ZCHUT_VLLM_API_KEY") or None,
-            telegram_bot_token=env.get("TELEGRAM_BOT_TOKEN") or None,
+            telegram_bot_token=env.get("ZCHUT_TELEGRAM_BOT_TOKEN")
+            or env.get("TELEGRAM_BOT_TOKEN")
+            or None,
             telegram_webhook_secret=env.get("TELEGRAM_WEBHOOK_SECRET") or None,
-            telegram_allowed_chat_ids=env.get("TELEGRAM_ALLOWED_CHAT_IDS") or None,
+            telegram_allowed_chat_ids=env.get("ZCHUT_TELEGRAM_ALLOWED_CHAT_IDS")
+            or env.get("TELEGRAM_ALLOWED_CHAT_IDS")
+            or None,
             qdrant_url=env.get("QDRANT_URL") or None,
             qdrant_api_key=env.get("QDRANT_API_KEY") or None,
             google_cloud_project=env.get("GOOGLE_CLOUD_PROJECT") or None,
@@ -260,6 +264,8 @@ SECRET_NAMES = frozenset(
         "ZCHUT_VLLM_URL",
         "ZCHUT_VLLM_API_KEY",
         "TELEGRAM_BOT_TOKEN",
+        "ZCHUT_TELEGRAM_BOT_TOKEN",
+        "ZCHUT_TELEGRAM_ALLOWED_CHAT_IDS",
         "TELEGRAM_WEBHOOK_SECRET",
         "TELEGRAM_ALLOWED_CHAT_IDS",
         "QDRANT_URL",
