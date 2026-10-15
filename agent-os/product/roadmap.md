@@ -26,6 +26,8 @@ Each item is one spec in `agent-os/specs/`. Ship in order; each step is usable o
 
 ## Operations
 
+- Weekly re-ingest runs locally (desktop scheduled task, Sundays 09:00); kolzchut blocks datacenter traffic, so the cloud routine is disabled.
+
 - Budget: under 10 USD per month across all providers. Anthropic console hard limit, Voyage prepaid, OpenRouter prepaid; Chroma local and Qdrant Cloud free tier cost nothing.
 - Every command takes `--max-usd` (default 0.08) and aborts before the call that would cross it; `zchut eval` over 30 questions on Haiku with verification should stay under 0.30 USD.
 - Weekly: sum `runs/` for the week (`zchut cost --days 7`); if the month is on track to exceed 8 USD, switch the default tier to `qwen-openrouter`.

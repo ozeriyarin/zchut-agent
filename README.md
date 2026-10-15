@@ -460,25 +460,13 @@ and `runs/` there whatever folder the client launches it from.
   `TELEGRAM_ALLOWED_CHAT_IDS` with `TELEGRAM_BOT_TOKEN`; it refuses when that list is empty or
   holds more than one id.
 
-The owner creates a Claude Code cloud routine "zchut weekly re-ingest" with the `schedule` skill,
-Sundays 03:00 UTC, with this prompt:
-
-```text
-Weekly re-ingest of the zchut-agent index (repo already checked out, branch main).
-1. python -m venv .venv && .venv/bin/pip install -e .
-2. .venv/bin/zchut crawl run --max-minutes 50 --max-usd 0.30
-   (exit code 2 means the budget cap stopped it; continue anyway).
-3. .venv/bin/zchut crawl report --notify
-4. Commit only data/manifest.json and the new runs/*-crawl.json with the message
-   `crawl: <date>` and push to origin main. Never commit anything else; never print secrets.
-5. Reply with the report text and the exit codes of steps 2 and 3.
-```
-
-Environment variables of the routine's environment: `VOYAGE_API_KEY`, `QDRANT_URL`,
-`QDRANT_API_KEY`, `ZCHUT_TELEGRAM_BOT_TOKEN`, `ZCHUT_TELEGRAM_ALLOWED_CHAT_IDS` (one id). The `ZCHUT_`
-names take precedence over the plain ones, so the environment can be shared with another bot. Network allow list:
-`kolzchut.org.il`, `api.voyageai.com`, the Qdrant cluster host, `api.telegram.org`, `pypi.org`,
-`files.pythonhosted.org`, `github.com`.
+The re-ingest runs as a **local** scheduled task of the Claude desktop app on the owner's
+machine ("zchut weekly re-ingest (local)", Sundays 09:00 Asia/Jerusalem; if the app is closed it
+runs on the next launch). A cloud routine was tried on 2026-10-15 and cannot work: kolzchut's
+Cloudflare front answers 403 to requests from datacenter addresses, so only a home connection can
+crawl the site. The task pulls `main`, runs `zchut crawl run --max-minutes 60 --max-usd 0.30`
+against Qdrant Cloud, posts the report with `zchut crawl report --notify`, and commits
+`data/manifest.json` and the new `runs/*-crawl.json`.
 
 State between runs: `data/manifest.json` (public page titles, revision ids, dates and counts) and
 the `runs/*-crawl.json` records (counts only) are committed, so each run plans against the last
