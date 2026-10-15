@@ -462,9 +462,11 @@ and `runs/` there whatever folder the client launches it from.
 
 The re-ingest runs as a **local** scheduled task of the Claude desktop app on the owner's
 machine ("zchut weekly re-ingest (local)", Sundays 09:00 Asia/Jerusalem; if the app is closed it
-runs on the next launch). A cloud routine was tried on 2026-10-15 and cannot work: kolzchut's
-Cloudflare front answers 403 to requests from datacenter addresses, so only a home connection can
-crawl the site. The task pulls `main`, runs `zchut crawl run --max-minutes 60 --max-usd 0.30`
+runs on the next launch). Cloud options were tried on 2026-10-15 and cannot work yet: kolzchut's
+Cloudflare front answers 403 to requests from datacenter addresses (the Claude cloud sandbox and
+GitHub Actions runners both got 403; a home connection gets 200). A ready GitHub Actions workflow
+(`.github/workflows/reingest.yml`, schedule commented out, `probe_only` input) takes over the
+moment the site allowlists this client. The task pulls `main`, runs `zchut crawl run --max-minutes 60 --max-usd 0.30`
 against Qdrant Cloud, posts the report with `zchut crawl report --notify`, and commits
 `data/manifest.json` and the new `runs/*-crawl.json`.
 

@@ -7,8 +7,10 @@ on:
         description: "Only test whether kolzchut answers from this runner"
         type: boolean
         default: true
-  schedule:
-    - cron: "0 3 * * 0"
+  # schedule disabled: kolzchut answers 403 to GitHub runners too (probe 2026-10-15);
+  # re-enable once the site allowlists this client.
+  # schedule:
+  #   - cron: "0 3 * * 0"
 
 permissions:
   contents: write
