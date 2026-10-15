@@ -1,6 +1,6 @@
 # Spec: Zchut v1 — ingest + ask (CLI, citations, refusal, eval set)
 
-Status: shaped 2026-10-13. Standards applied: python-style, secrets-and-config, ai-calls, testing, sources-and-licensing.
+Status: shaped 2026-10-13. Standards applied: python-style, secrets-and-config, ai-calls, testing, sources-and-licensing. Shipped 2026-10-13, commit 1229469.
 
 ## Goal
 

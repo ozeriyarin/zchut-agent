@@ -1,6 +1,6 @@
 # Spec: zchut v4a — prompt tuning, scored by the eval table
 
-Status: shaped 2026-10-13. Builds on v2. Standards applied: ai-calls, testing.
+Status: shaped 2026-10-13. Builds on v2. Standards applied: ai-calls, testing. Shipped 2026-10-13, commit 77fd7b9.
 
 ## Goal
 

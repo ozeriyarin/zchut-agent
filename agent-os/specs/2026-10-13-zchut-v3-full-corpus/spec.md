@@ -1,6 +1,6 @@
 # Spec: zchut v3 — full corpus: every כל זכות article, incremental and resumable
 
-Status: shaped 2026-10-13. Builds on v1. Standards applied: python-style, secrets-and-config, testing, sources-and-licensing.
+Status: shaped 2026-10-13. Builds on v1. Standards applied: python-style, secrets-and-config, testing, sources-and-licensing. Shipped 2026-10-13, commit 097718c.
 
 ## Goal
 

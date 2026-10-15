@@ -1,6 +1,6 @@
 # Spec: zchut v4 — Telegram bot on a scale-to-zero host, Qdrant Cloud, per-user sessions
 
-Status: shaped 2026-10-13. Builds on v2/v3/v4a. Standards applied: python-style, secrets-and-config, ai-calls, testing, sources-and-licensing.
+Status: shaped 2026-10-13. Builds on v2/v3/v4a. Standards applied: python-style, secrets-and-config, ai-calls, testing, sources-and-licensing. Shipped 2026-10-14, commit ae6380a; deployed to Cloud Run 2026-10-15 (revision 1).
 
 ## Goal
 

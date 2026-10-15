@@ -1,6 +1,6 @@
 # Spec: zchut v5b — hybrid retrieval: BM25 fused with vector search
 
-Status: shaped 2026-10-15 from the full-corpus eval (hit@3 0.85; four pension questions where sector-specific pages outrank the general page) and the live session (a wartime unpaid-leave page cited for the general calculation rule). Builds on v1/v3. Standards applied: python-style, testing.
+Status: shaped 2026-10-15 from the full-corpus eval (hit@3 0.85; four pension questions where sector-specific pages outrank the general page) and the live session (a wartime unpaid-leave page cited for the general calculation rule). Builds on v1/v3. Standards applied: python-style, testing. Shipped 2026-10-15, commit b34af20, as code; measured on the full corpus and NOT adopted as default (vector 0.85 vs hybrid 0.59/0.67).
 
 ## Goal
 

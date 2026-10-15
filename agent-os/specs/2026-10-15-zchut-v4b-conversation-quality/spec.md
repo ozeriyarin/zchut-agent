@@ -1,6 +1,6 @@
 # Spec: zchut v4b — conversation quality: condense, fixed clarifications, replies, citations
 
-Status: shaped 2026-10-15 from the first live Telegram session (5 exchanges, 2 wrongly refused, 1 derailed by a generated clarification). Builds on v2/v4. Standards applied: python-style, ai-calls, testing.
+Status: shaped 2026-10-15 from the first live Telegram session (5 exchanges, 2 wrongly refused, 1 derailed by a generated clarification). Builds on v2/v4. Standards applied: python-style, ai-calls, testing. Shipped 2026-10-15, commit afd2eef (revision 2); the v4c addendum shipped 2026-10-15, commit 6fe4af1 (revision 3).
 
 ## Goal
 

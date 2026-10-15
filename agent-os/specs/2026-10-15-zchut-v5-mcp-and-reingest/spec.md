@@ -1,6 +1,6 @@
 # Spec: zchut v5 — MCP server over the corpus, weekly re-ingest routine
 
-Status: shaped 2026-10-15. Builds on v1/v3/v4. Standards applied: python-style, secrets-and-config, sources-and-licensing, testing.
+Status: shaped 2026-10-15. Builds on v1/v3/v4. Standards applied: python-style, secrets-and-config, sources-and-licensing, testing. Shipped 2026-10-15, commit 0fca767.
 
 ## Goal
 

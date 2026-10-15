@@ -6,8 +6,9 @@ answer carries numbered citations `[1]`, `[2]` that link to the source pages and
 dates; when retrieval is too weak to ground an answer it says so in one fixed sentence instead of
 guessing. Every AI call is recorded (model, tokens, cost, latency) under `runs/`.
 
-**Status: v6 shipped** (framework comparison: LlamaIndex chunker and embedder measured
-against the hand-written pipeline; see "Framework comparison").
+**Status: v6 and v10 shipped** (v6: LlamaIndex chunker and embedder measured against the
+hand-written pipeline, see "Framework comparison"; v10: Cloud Build runs as a dedicated build
+account). @zchutbot is live on Cloud Run revision 4 over 62,904 chunks in Qdrant Cloud.
 Specs: `agent-os/specs/2026-10-13-zchut-v1-ingest-ask/spec.md`,
 `agent-os/specs/2026-10-13-zchut-v2-conversation/spec.md`,
 `agent-os/specs/2026-10-13-zchut-v3-full-corpus/spec.md`,
@@ -141,22 +142,25 @@ After a full crawl, `zchut eval --retrieval-only` checks that hit@3 on the 30 qu
 `zchut ask` runs a LangGraph state graph (`src/zchut/graph/`) over a typed `ConversationState`:
 
 ```
-            ┌──────────── out of scope ───────────────┐
-            │                                          v
-START -> classify --missing fact (once)--> clarify   refuse -> END
-            │  ^                              │         ^
-            │  └──────── reply ───────────────┘         │ best score < min_score
-            v                                           │
-         retrieve ──────────────────────────────────────┘
-            │
-            v
-          answer --(--no-verify)--> final -> END
-            │                        ^
-            v                        │ supported
-          verify ────────────────────┤
-                                     │ not supported
-                                     v
-                                  escalate -> END
+START ──history──> condense ──not a question──> nudge -> END
+  │                  │                            ^
+  │ first turn       │ question                   │ greeting / reaction
+  v                  v                            │
+  └──────────────> classify ──────────────────────┘
+                     │  ├── out of scope ──────────> refuse -> END
+                     │  ├── office question ───────> escalate (office line) -> END
+                     │  └── missing fact (once per session) ──> clarify ──reply──> condense
+                     v
+                  retrieve ──best score < min_score──> refuse -> END
+                     │
+                     v
+                  answer ──(--no-verify)──> final (+ office line when asked) -> END
+                     │                        ^
+                     v                        │ supported
+                  verify ─────────────────────┤
+                                              │ not supported
+                                              v
+                                           escalate -> END
 ```
 
 - `classify`: one Haiku call with a JSON schema: topic (`unemployment`, `pension`, `tax`,
@@ -266,12 +270,10 @@ order, unchanged); `zchut eval --retrieval-only --mode vector|hybrid` and
 | --- | --- | --- | --- | --- |
 | dry run (fixture index, fake embedder) | vector | 0.63 | 0.13 (expected 0.10) | 1.00 (13/13) |
 | dry run (fixture index, fake embedder) | hybrid | 0.63 | 0.13 (expected 0.10) | 1.00 (13/13) |
-| full corpus (owner's run) | vector | 0.85 | to fill | to fill |
-| full corpus (owner's run) | hybrid | to fill | to fill | to fill |
 
 The dry run only proves the pipeline: three fixture pages, so both modes find the same pages, in a
-different order on 27 of 30 questions. The adoption check is the full-corpus row: hit@3 must not
-drop and the four pension misses must improve, otherwise set `retrieval.mode` back to `vector`.
+different order on 27 of 30 questions. The adoption check is the full-corpus table below: hit@3
+must not drop and the four pension misses must improve, otherwise `retrieval.mode` stays `vector`.
 
 Measured on the full corpus (62,904 chunks, Qdrant, 30 questions, retrieval only, 2026-10-15):
 

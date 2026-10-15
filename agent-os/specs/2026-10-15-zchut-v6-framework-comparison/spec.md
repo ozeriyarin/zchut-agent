@@ -1,6 +1,6 @@
 # Spec: zchut v6 — framework comparison: LlamaIndex chunker and embedder against the hand-written pipeline
 
-Status: shaped 2026-10-15. Builds on v1/v5b. Standards applied: python-style, ai-calls, testing.
+Status: shaped 2026-10-15. Builds on v1/v5b. Standards applied: python-style, ai-calls, testing. Shipped 2026-10-15, commit a095e75; real run llama-markdown 0.89 vs section 0.85 on six pages, default kept pending a full re-index.
 
 ## Goal
 

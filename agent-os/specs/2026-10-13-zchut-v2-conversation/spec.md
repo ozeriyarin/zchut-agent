@@ -1,6 +1,6 @@
 # Spec: zchut v2 — LangGraph conversation, verification, escalation, model tiers
 
-Status: shaped 2026-10-13. Builds on v1. Standards applied: python-style, secrets-and-config, ai-calls, testing, sources-and-licensing.
+Status: shaped 2026-10-13. Builds on v1. Standards applied: python-style, secrets-and-config, ai-calls, testing, sources-and-licensing. Shipped 2026-10-13, commit f52f86f.
 
 ## Goal
 

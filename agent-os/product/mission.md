@@ -16,10 +16,11 @@ Zchut Agent answers questions about Israeli bureaucracy in Hebrew, grounded only
 ## What it does
 
 1. Ingests: fetches public pages (kolzchut.org.il under CC BY-SA, gov.il), splits them by section headings with the title path, and stores each chunk with its URL, title, section, fetch date and license.
-2. Retrieves: Voyage embeddings over a local Chroma store (Qdrant Cloud later); every answer starts from the top chunks and their scores.
+2. Retrieves: Voyage embeddings over the full kolzchut corpus in Qdrant Cloud (local Chroma for comparisons); every answer starts from the top chunks and their scores.
 3. Answers: a cheap model (Haiku by default, Qwen via OpenRouter as a cheaper tier) writes one Hebrew answer with numbered citations [1], [2] linking to the source URLs and the page's last-updated date.
 4. Refuses: when the best retrieval score is below the threshold the answer is one fixed Hebrew sentence, never an improvisation.
 5. Measures: a frozen 30-question eval set with expected sources reports retrieval hit@3, citation precision and refusal rate; every AI call is recorded with model, tokens, cost and latency under `runs/`.
+6. Delivers: a Telegram bot (@zchutbot, webhook on Cloud Run) for conversations, and a read-only MCP server that exposes search and fetch over the index with attribution.
 
 ## Principles
 
