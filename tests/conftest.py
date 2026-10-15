@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import shutil
 from pathlib import Path
@@ -86,6 +87,10 @@ def cli_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     shutil.copytree(ROOT / "config", tmp_path / "config")
     shutil.copytree(FIXTURES, tmp_path / "tests" / "fixtures" / "pages")
     shutil.copytree(ROOT / "eval", tmp_path / "eval")
+    cfg_path = tmp_path / "config" / "zchut.json"
+    cfg = json.loads(cfg_path.read_text("utf-8"))
+    cfg["store"]["backend"] = "chroma"  # tests use the local store whatever the repo config says
+    cfg_path.write_text(json.dumps(cfg, ensure_ascii=False), "utf-8")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli, "PACKAGE_ROOT", tmp_path)
     for name in ("VOYAGE_API_KEY", "ZCHUT_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"):
