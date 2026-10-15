@@ -152,6 +152,8 @@ def test_load_dotenv_parses_pairs_and_keeps_existing_values(tmp_path: Path) -> N
         "NO_EQUALS_LINE",
         "HTTPS_PROXY=http://evil.example",
         "SSL_CERT_FILE=/tmp/evil.pem",
+        "GOOGLE_CLOUD_PROJECT=proj",
+        "GOOGLE_CLOUD_REGION=europe-west1",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
     env = {"ANTHROPIC_API_KEY": "from-env"}
@@ -161,6 +163,8 @@ def test_load_dotenv_parses_pairs_and_keeps_existing_values(tmp_path: Path) -> N
         "VOYAGE_API_KEY": "plain",
         "ZCHUT_ANTHROPIC_API_KEY": "double quoted",
         "OPENROUTER_API_KEY": "single",
+        "GOOGLE_CLOUD_PROJECT": "proj",
+        "GOOGLE_CLOUD_REGION": "europe-west1",
     }
     spaced: dict[str, str] = {}
     load_dotenv(path, spaced)

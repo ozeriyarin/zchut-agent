@@ -1,18 +1,51 @@
 param(
-    [ValidateSet("setup", "secrets", "build", "deploy", "webhook", "all")]
-    [string]$Step = "all"
+    [ValidateSet("check", "setup", "secrets", "build", "deploy", "webhook", "all")]
+    [string]$Step = "all",
+    [string]$Project = "",
+    [string]$Region = "",
+    [string]$QdrantUrl = "",
+    [string]$AllowedChatIds = "",
+    [string]$BillingAccount = ""
 )
 
 $ErrorActionPreference = "Stop"
 
-$Project = "zchut-agent"
-$Region = "europe-west1"
-$BillingAccount = "000000-000000-000000"
+$DotenvPath = Join-Path (Split-Path -Parent $PSScriptRoot) ".env"
+$ConfigNames = @("GOOGLE_CLOUD_PROJECT", "QDRANT_URL", "TELEGRAM_ALLOWED_CHAT_IDS", "GOOGLE_CLOUD_REGION")
+
+# Returns only the requested names from the repo-root .env; never prints values.
+function Read-Dotenv([string[]]$Names) {
+    $found = @{}
+    if (-not (Test-Path -LiteralPath $DotenvPath)) { return $found }
+    foreach ($line in [IO.File]::ReadAllLines($DotenvPath)) {
+        $key, $value = $line.Trim() -split "=", 2
+        $key = $key.Trim()
+        if ($null -eq $value -or $key.StartsWith("#") -or $Names -notcontains $key) { continue }
+        $value = $value.Trim()
+        if ($value.Length -ge 2 -and $value[0] -eq $value[-1] -and "`"'".Contains($value[0])) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
+        if ($value) { $found[$key] = $value }
+    }
+    return $found
+}
+
+function Get-Setting([string]$Name, [string]$Fallback) {
+    $fromEnv = [Environment]::GetEnvironmentVariable($Name)
+    if ($fromEnv) { return $fromEnv }
+    if ($DotenvConfig.ContainsKey($Name)) { return $DotenvConfig[$Name] }
+    return $Fallback
+}
+
+$DotenvConfig = Read-Dotenv $ConfigNames
+if (-not $PSBoundParameters.ContainsKey("Project")) { $Project = Get-Setting "GOOGLE_CLOUD_PROJECT" "zchut-agent" }
+if (-not $PSBoundParameters.ContainsKey("Region")) { $Region = Get-Setting "GOOGLE_CLOUD_REGION" "europe-west1" }
+if (-not $PSBoundParameters.ContainsKey("QdrantUrl")) { $QdrantUrl = Get-Setting "QDRANT_URL" "" }
+if (-not $PSBoundParameters.ContainsKey("AllowedChatIds")) { $AllowedChatIds = Get-Setting "TELEGRAM_ALLOWED_CHAT_IDS" "" }
+
 $Service = "zchut-bot"
 $Repo = "zchut"
 $ServiceAccount = "zchut-bot"
-$QdrantUrl = "https://YOUR-CLUSTER.europe-west3-0.gcp.cloud.qdrant.io:6333"
-$AllowedChatIds = ""
 $BudgetUsd = 2
 
 $Image = "$Region-docker.pkg.dev/$Project/$Repo/$Service`:latest"
@@ -54,15 +87,24 @@ function Get-HookId([string]$Secret) {
 }
 
 function Step-Setup {
-    Invoke-Gcloud projects create $Project --name $Project
-    Invoke-Gcloud billing projects link $Project --billing-account $BillingAccount
+    & gcloud projects describe $Project *> $null
+    $exists = $LASTEXITCODE -eq 0
+    if ($exists -or -not $BillingAccount) {
+        $why = if ($exists) { "project $Project already exists" } else { "no -BillingAccount" }
+        Write-Host "Skipping project create, billing link and budget create: $why."
+    } else {
+        Invoke-Gcloud projects create $Project --name $Project
+        Invoke-Gcloud billing projects link $Project --billing-account $BillingAccount
+    }
     Invoke-Gcloud config set project $Project
     Invoke-Gcloud services enable run.googleapis.com cloudbuild.googleapis.com `
         artifactregistry.googleapis.com secretmanager.googleapis.com firestore.googleapis.com `
         billingbudgets.googleapis.com
-    Invoke-Gcloud billing budgets create --billing-account $BillingAccount `
-        --display-name "$Service budget" --budget-amount "$($BudgetUsd)USD" `
-        --threshold-rule percent=0.5 --threshold-rule percent=1.0
+    if (-not $exists -and $BillingAccount) {
+        Invoke-Gcloud billing budgets create --billing-account $BillingAccount `
+            --display-name "$Service budget" --budget-amount "$($BudgetUsd)USD" `
+            --threshold-rule percent=0.5 --threshold-rule percent=1.0
+    }
     Invoke-Gcloud firestore databases create --location $Region --type firestore-native
     Invoke-Gcloud firestore fields ttls update expires_at --collection-group sessions --enable-ttl
     Invoke-Gcloud artifacts repositories create $Repo --repository-format docker --location $Region
@@ -81,9 +123,38 @@ function Step-Secrets {
             Set-Secret $name $generated
             continue
         }
-        $secure = Read-Host "$name" -AsSecureString
-        Set-Secret $name ([Net.NetworkCredential]::new("", $secure).Password)
+        $fromDotenv = (Read-Dotenv @($name))[$name]
+        $prompt = if ($fromDotenv) { "$name [Enter = use .env value]" } else { $name }
+        $secure = Read-Host $prompt -AsSecureString
+        $value = [Net.NetworkCredential]::new("", $secure).Password
+        if (-not $value) { $value = $fromDotenv }
+        if (-not $value) { throw "no value for $name" }
+        Set-Secret $name $value
     }
+}
+
+function Step-Check {
+    if (-not (Get-Command gcloud -ErrorAction SilentlyContinue)) {
+        Write-Host "gcloud is not on PATH. Install it: https://cloud.google.com/sdk/docs/install"
+        exit 1
+    }
+    $account = & gcloud auth list --filter "status:ACTIVE" --format "value(account)"
+    if ($LASTEXITCODE -ne 0 -or -not $account) {
+        Write-Host "No active gcloud account. Run: gcloud auth login"
+        exit 1
+    }
+    $configured = (& gcloud config get-value project 2> $null) -join ""
+    if ($configured -ne $Project) {
+        Write-Host "gcloud project is '$configured', expected $Project. Run: gcloud config set project $Project"
+        exit 1
+    }
+    $uri = $null
+    $qdrantHost = if ([Uri]::TryCreate($QdrantUrl, "Absolute", [ref]$uri)) { $uri.Host } else { "(not set)" }
+    $chatCount = @($AllowedChatIds -split "," | Where-Object { $_.Trim() }).Count
+    Write-Host "Project: $Project"
+    Write-Host "Region: $Region"
+    Write-Host "QdrantUrl host: $qdrantHost"
+    Write-Host "AllowedChatIds: $(if ($chatCount) { "$chatCount ids" } else { 'not set (everyone allowed)' })"
 }
 
 function Step-Build {
@@ -91,6 +162,7 @@ function Step-Build {
 }
 
 function Step-Deploy {
+    if (-not $QdrantUrl) { throw "QdrantUrl is empty: pass -QdrantUrl or set QDRANT_URL in .env" }
     $envVars = "^;^GOOGLE_CLOUD_PROJECT=$Project;QDRANT_URL=$QdrantUrl;TELEGRAM_ALLOWED_CHAT_IDS=$AllowedChatIds"
     $secrets = ($SecretNames | ForEach-Object { "$_=$($_):latest" }) -join ","
     Invoke-Gcloud run deploy $Service --project $Project --region $Region --image $Image `
@@ -117,10 +189,11 @@ function Step-Webhook {
 }
 
 switch ($Step) {
+    "check" { Step-Check }
     "setup" { Step-Setup }
     "secrets" { Step-Secrets }
     "build" { Step-Build }
     "deploy" { Step-Deploy }
     "webhook" { Step-Webhook }
-    "all" { Step-Setup; Step-Secrets; Step-Build; Step-Deploy; Step-Webhook }
+    "all" { Step-Check; Step-Setup; Step-Secrets; Step-Build; Step-Deploy; Step-Webhook }
 }

@@ -246,6 +246,7 @@ SECRET_NAMES = frozenset(
         "QDRANT_URL",
         "QDRANT_API_KEY",
         "GOOGLE_CLOUD_PROJECT",
+        "GOOGLE_CLOUD_REGION",
     }
 )
 

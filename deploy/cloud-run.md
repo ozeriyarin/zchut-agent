@@ -1,11 +1,23 @@
 # Deploying the Telegram webhook to Cloud Run
 
 The owner runs these commands; the agent never deploys. `scripts/deploy.ps1` wraps the same
-commands with the variables at the top (`.\scripts\deploy.ps1 -Step setup|secrets|build|deploy|webhook|all`).
-All commands are PowerShell; `gcloud` must be installed and logged in (`gcloud auth login`).
+commands (`.\scripts\deploy.ps1 -Step check|setup|secrets|build|deploy|webhook|all`). Its
+parameters `-Project`, `-Region`, `-QdrantUrl` and `-AllowedChatIds` default to the environment
+variables `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_REGION`, `QDRANT_URL` and
+`TELEGRAM_ALLOWED_CHAT_IDS`, then to the same lines of the repo-root `.env` (it reads only these
+four names from it), then to `zchut-agent` / `europe-west1` / empty. `-BillingAccount` defaults to
+empty. The `secrets` step offers each secret found in `.env` (`[Enter = use .env value]`).
+
+## Prerequisites
+
+1. Install the Google Cloud CLI: https://cloud.google.com/sdk/docs/install (open a new terminal).
+2. `gcloud auth login`
+3. `gcloud auth application-default login` (Firestore from the laptop, for `zchut cost`).
+4. `gcloud config set project <project id>`
+5. `.\scripts\deploy.ps1 -Step check` (gcloud on PATH, an active account, the project set).
 
 ```powershell
-$Project = "zchut-agent"
+$Project = "zchut-agent"                    # or the id of a project created in the console
 $Region = "europe-west1"
 $BillingAccount = "000000-000000-000000"   # gcloud billing accounts list
 $Service = "zchut-bot"
@@ -20,6 +32,11 @@ $Image = "$Region-docker.pkg.dev/$Project/$Repo/$Service`:latest"
 
 Cloud Run needs billing enabled even inside the free tier. `--max-instances 1` caps the worst
 case, and the budget alert mails at 1 and 2 USD.
+
+The project, its billing link and the budgets may already exist (created in the console). The
+script's `setup` step then skips `projects create`, `billing projects link` and
+`billing budgets create`: it skips them when `gcloud projects describe` finds the project or when
+`-BillingAccount` is empty, and always runs `config set project` and `services enable`.
 
 ```powershell
 gcloud projects create $Project --name $Project
