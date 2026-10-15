@@ -1,8 +1,10 @@
 .venv/
 venv/
 .env
-runs/
-data/
+runs/*
+!runs/*-crawl.json
+data/*
+!data/manifest.json
 .chroma/
 __pycache__/
 *.pyc

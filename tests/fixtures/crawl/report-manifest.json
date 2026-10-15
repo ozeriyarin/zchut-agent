@@ -1,0 +1,105 @@
+{
+ "version": 1,
+ "articles": {
+  "https://www.kolzchut.org.il/he/דמי_אבטלה": {
+   "revid": 1000,
+   "last_updated": "2026-10-01",
+   "fetched_at": "2026-10-11",
+   "chunks": 3,
+   "status": "ok"
+  },
+  "https://www.kolzchut.org.il/he/החזר_מס_הכנסה": {
+   "revid": 1001,
+   "last_updated": "2026-10-02",
+   "fetched_at": "2026-10-11",
+   "chunks": 3,
+   "status": "ok"
+  },
+  "https://www.kolzchut.org.il/he/פנסיה": {
+   "revid": 1002,
+   "last_updated": "2026-10-03",
+   "fetched_at": "2026-10-11",
+   "chunks": 3,
+   "status": "ok"
+  },
+  "https://www.kolzchut.org.il/he/קצבת_זיקנה_(קצבת_אזרח_ותיק)": {
+   "revid": 1003,
+   "last_updated": "2026-10-04",
+   "fetched_at": "2026-10-11",
+   "chunks": 3,
+   "status": "ok"
+  },
+  "https://www.kolzchut.org.il/he/דמי_לידה": {
+   "revid": 1004,
+   "last_updated": "2026-10-05",
+   "fetched_at": "2026-10-11",
+   "chunks": 3,
+   "status": "ok"
+  },
+  "https://www.kolzchut.org.il/he/מענק_עבודה": {
+   "revid": 1005,
+   "last_updated": "2026-10-06",
+   "fetched_at": "2026-10-11",
+   "chunks": 3,
+   "status": "ok"
+  },
+  "https://www.kolzchut.org.il/he/הבטחת_הכנסה": {
+   "revid": 1006,
+   "last_updated": "2026-10-07",
+   "fetched_at": "2026-10-11",
+   "chunks": 3,
+   "status": "ok"
+  },
+  "https://www.kolzchut.org.il/he/קצבת_נכות_כללית": {
+   "revid": 1007,
+   "last_updated": "2026-10-08",
+   "fetched_at": "2026-10-11",
+   "chunks": 3,
+   "status": "ok"
+  },
+  "https://www.kolzchut.org.il/he/דמי_מחלה": {
+   "revid": 1008,
+   "last_updated": "2026-10-09",
+   "fetched_at": "2026-10-11",
+   "chunks": 3,
+   "status": "ok"
+  },
+  "https://www.kolzchut.org.il/he/פיצויי_פיטורים": {
+   "revid": 1009,
+   "last_updated": "2026-10-10",
+   "fetched_at": "2026-10-11",
+   "chunks": 3,
+   "status": "ok"
+  },
+  "https://www.kolzchut.org.il/he/חופשה_שנתית": {
+   "revid": 1010,
+   "last_updated": "2026-10-11",
+   "fetched_at": "2026-10-11",
+   "chunks": 3,
+   "status": "ok"
+  },
+  "https://www.kolzchut.org.il/he/דמי_הבראה": {
+   "revid": 1011,
+   "last_updated": "2026-10-12",
+   "fetched_at": "2026-10-11",
+   "chunks": 3,
+   "status": "ok"
+  },
+  "https://www.kolzchut.org.il/he/עמוד_שהוסר": {
+   "revid": 9,
+   "last_updated": "2026-10-20",
+   "fetched_at": "2026-10-11",
+   "chunks": 0,
+   "status": "skipped",
+   "reason": "removed"
+  },
+  "https://www.kolzchut.org.il/he/דף_שנכשל": {
+   "revid": 8,
+   "last_updated": "2026-10-21",
+   "fetched_at": "2026-10-11",
+   "chunks": 0,
+   "status": "error",
+   "error": "fetch failed"
+  }
+ }
+}

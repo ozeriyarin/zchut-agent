@@ -119,6 +119,8 @@ class GraphRecord(BaseModel):
 
 class CrawlRecord(BaseModel):
     planned: int
+    new: int = 0
+    changed: int = 0
     fetched: int = 0
     embedded: int = 0
     errors: int = 0
@@ -133,6 +135,7 @@ class CrawlRecord(BaseModel):
     stopped_by: str = "done"
     estimate_fetch_s: float
     estimate_embed_s: float
+    report_posted: bool = False
 
 
 class RunRecord(BaseModel):

@@ -6,12 +6,13 @@ answer carries numbered citations `[1]`, `[2]` that link to the source pages and
 dates; when retrieval is too weak to ground an answer it says so in one fixed sentence instead of
 guessing. Every AI call is recorded (model, tokens, cost, latency) under `runs/`.
 
-**Status: v4 shipped** (Telegram webhook on Cloud Run, Qdrant store, Firestore sessions; see
-"Telegram").
+**Status: v5 shipped** (read-only MCP server over the index and a weekly re-ingest routine; see
+"MCP server" and "Weekly re-ingest routine").
 Specs: `agent-os/specs/2026-10-13-zchut-v1-ingest-ask/spec.md`,
 `agent-os/specs/2026-10-13-zchut-v2-conversation/spec.md`,
 `agent-os/specs/2026-10-13-zchut-v3-full-corpus/spec.md`,
-`agent-os/specs/2026-10-13-zchut-v4-telegram/spec.md`.
+`agent-os/specs/2026-10-13-zchut-v4-telegram/spec.md`,
+`agent-os/specs/2026-10-15-zchut-v5-mcp-and-reingest/spec.md`.
 
 The project is spec-driven (Agent OS v3): product docs in `agent-os/product/`, coding standards in
 `agent-os/standards/`, one spec per version in `agent-os/specs/`. Every acceptance criterion has a
@@ -288,6 +289,88 @@ zchut bot serve                                       # production wiring (Fires
 
 New environment variables: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`,
 `TELEGRAM_ALLOWED_CHAT_IDS`, `QDRANT_URL`, `QDRANT_API_KEY`, `GOOGLE_CLOUD_PROJECT`.
+
+## MCP server
+
+`zchut mcp serve` runs a Model Context Protocol server over stdio (official `mcp` Python SDK,
+`FastMCP`), so Claude Code, Claude Desktop or another agent can search the כל זכות index directly.
+It reads the store chosen by `store.backend` (Qdrant or Chroma) and embeds queries with Voyage
+(`VOYAGE_API_KEY`, plus `QDRANT_URL` and `QDRANT_API_KEY` for Qdrant); a missing key stops it at
+startup with the variable name.
+
+- `search(query, k=5, topic=None)`: vector search, no model call. Returns up to `k` results (capped
+  at 20), each `{title, section, url, last_updated, score, text, license, attribution}`. The query
+  is at most 500 characters. `topic` is a key of `mcp.topics` in `config/zchut.json`
+  (`unemployment`, `pension`, `tax`), which keeps only chunks whose title path contains one of its
+  substrings; an unknown topic is an error that lists the known ones.
+- `fetch(url)`: the page's chunks in section order with the same fields (no score), read from the
+  index only; an unknown URL is an error.
+- Resource `zchut://stats`: `{chunks, articles, last_crawl, skipped}` from the store count,
+  `data/manifest.json` and the newest `runs/*-crawl.json`.
+- Every result carries the CC BY-SA attribution line, and the server instructions tell the client
+  to cite the URL of every result it uses.
+
+Read-only guarantee: the tools are marked `readOnlyHint`; they only embed the query and read the
+configured index. No argument reaches a shell, the filesystem or the network beyond that index,
+nothing is written, and results are corpus text, described to the client as data, not
+instructions. Queries are not recorded; each call logs one counter line to stderr.
+
+```powershell
+claude mcp add zchut -- C:\zchut-agent\.venv\Scripts\zchut.exe mcp serve
+```
+
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "zchut": {
+      "command": "C:\zchut-agent\.venv\Scripts\zchut.exe",
+      "args": ["mcp", "serve"]
+    }
+  }
+}
+```
+
+The server switches to the repo folder on start, so it reads `config/zchut.json`, `.env`, `data/`
+and `runs/` there whatever folder the client launches it from.
+
+## Weekly re-ingest routine
+
+`zchut crawl run` is incremental, so a weekly run only fetches and embeds changed articles.
+
+- `zchut crawl report` reads the last two `runs/*-crawl.json` records and `data/manifest.json` and
+  prints a Hebrew report: new, changed, saved, removed, unchanged, skipped and failed counts, the
+  articles and chunks in the index (with the chunk change since the previous crawl), elapsed time,
+  tokens, cost, why it stopped, and the ten most recently updated titles by `last_updated`.
+- `zchut crawl report --notify` also posts the report to Telegram and sets `report_posted: true`
+  in the latest crawl record.
+- `zchut notify "<text>"` sends one HTML-escaped Telegram message to the single chat id in
+  `TELEGRAM_ALLOWED_CHAT_IDS` with `TELEGRAM_BOT_TOKEN`; it refuses when that list is empty or
+  holds more than one id.
+
+The owner creates a Claude Code cloud routine "zchut weekly re-ingest" with the `schedule` skill,
+Sundays 03:00 UTC, with this prompt:
+
+```text
+Weekly re-ingest of the zchut-agent index (repo already checked out, branch main).
+1. python -m venv .venv && .venv/bin/pip install -e .
+2. .venv/bin/zchut crawl run --max-minutes 50 --max-usd 0.30
+   (exit code 2 means the budget cap stopped it; continue anyway).
+3. .venv/bin/zchut crawl report --notify
+4. Commit only data/manifest.json and the new runs/*-crawl.json with the message
+   `crawl: <date>` and push to origin main. Never commit anything else; never print secrets.
+5. Reply with the report text and the exit codes of steps 2 and 3.
+```
+
+Environment variables of the routine's environment: `VOYAGE_API_KEY`, `QDRANT_URL`,
+`QDRANT_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS` (one id). Network allow list:
+`kolzchut.org.il`, `api.voyageai.com`, the Qdrant cluster host, `api.telegram.org`, `pypi.org`,
+`files.pythonhosted.org`, `github.com`.
+
+State between runs: `data/manifest.json` (public page titles, revision ids, dates and counts) and
+the `runs/*-crawl.json` records (counts only) are committed, so each run plans against the last
+one and the report can diff them. The Claude GitHub App must be installed on the repo for the push.
 
 ## Budget rules
 

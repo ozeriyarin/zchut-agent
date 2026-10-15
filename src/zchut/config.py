@@ -101,6 +101,10 @@ class BotSettings(BaseModel):
     process_inline: bool = False
 
 
+class McpSettings(BaseModel):
+    topics: dict[str, list[str]] = {}
+
+
 class Settings(BaseModel):
     sources: list[str]
     chunk: ChunkSettings
@@ -115,6 +119,7 @@ class Settings(BaseModel):
     paths: PathSettings
     store: StoreSettings = StoreSettings()
     bot: BotSettings = BotSettings()
+    mcp: McpSettings = McpSettings()
 
 
 class ModelPrice(BaseModel):

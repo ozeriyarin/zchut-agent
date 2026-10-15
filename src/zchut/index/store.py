@@ -34,6 +34,10 @@ class VectorStore(Protocol):
     def count(self) -> int: ...
 
 
+class PageStore(VectorStore, Protocol):
+    def page(self, url: str) -> list[Chunk]: ...
+
+
 def cosine(a: Sequence[float], b: Sequence[float]) -> float:
     dot = sum(x * y for x, y in zip(a, b, strict=True))
     norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
@@ -60,6 +64,9 @@ class InMemoryVectorStore:
 
     def count(self) -> int:
         return sum(len(rows) for rows in self._by_url.values())
+
+    def page(self, url: str) -> list[Chunk]:
+        return sorted((chunk for chunk, _ in self._by_url.get(url, [])), key=lambda c: c.id)
 
 
 def _node(chunk: Chunk, vector: list[float]) -> TextNode:
@@ -124,6 +131,12 @@ class ChromaStore:
     def count(self) -> int:
         return self._collection.count()
 
+    def page(self, url: str) -> list[Chunk]:
+        got = self._collection.get(where={"url": url}, include=["documents", "metadatas"])
+        docs, metas = got["documents"] or [], got["metadatas"] or []
+        chunks = [_chunk(i, d, dict(m)) for i, d, m in zip(got["ids"], docs, metas, strict=True)]
+        return sorted(chunks, key=lambda c: c.id)
+
     def rows(self, batch: int) -> Iterator[Rows]:
         for offset in range(0, self.count(), batch):
             got = self._collection.get(
@@ -183,6 +196,15 @@ class QdrantStore:
 
     def count(self) -> int:
         return self._client.count(COLLECTION, exact=True).count
+
+    def page(self, url: str) -> list[Chunk]:
+        points, _ = self._client.scroll(COLLECTION, scroll_filter=_url_filter(url), limit=10_000)
+        chunks = [
+            _chunk(str(p.payload["chunk_id"]), str(p.payload["text"]), p.payload)
+            for p in points
+            if p.payload is not None
+        ]
+        return sorted(chunks, key=lambda c: c.id)
 
 
 def migrate(source: ChromaStore, target: QdrantStore, batch: int = 256) -> int:

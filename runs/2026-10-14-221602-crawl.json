@@ -1,0 +1,228 @@
+{
+  "command": "crawl",
+  "started_at": "2026-10-14T22:16:02",
+  "dry_run": false,
+  "max_usd": 0.2,
+  "question_hash": null,
+  "history_hash": null,
+  "retrieved": [],
+  "refused": null,
+  "dropped_citations": 0,
+  "markdown_stripped": 0,
+  "budget_exceeded": false,
+  "pages_indexed": null,
+  "chunks_indexed": null,
+  "errors": [],
+  "calls": [
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 7103,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 4116,
+      "cost_usd": 0.00014206
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 6833,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 2567,
+      "cost_usd": 0.00013666
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 6788,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 2757,
+      "cost_usd": 0.00013576
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 7827,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 2042,
+      "cost_usd": 0.00015654
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 6602,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 2521,
+      "cost_usd": 0.00013204
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 6998,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 1806,
+      "cost_usd": 0.00013996
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 10874,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 3149,
+      "cost_usd": 0.00021748
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 6386,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 1961,
+      "cost_usd": 0.00012772
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 10102,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 3319,
+      "cost_usd": 0.00020203999999999998
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 9600,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 2466,
+      "cost_usd": 0.000192
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 6790,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 1825,
+      "cost_usd": 0.00013580000000000002
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 7097,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 2244,
+      "cost_usd": 0.00014193999999999999
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 7116,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 2262,
+      "cost_usd": 0.00014232
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 6848,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 2172,
+      "cost_usd": 0.00013696000000000002
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 8005,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 2424,
+      "cost_usd": 0.0001601
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 7369,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 2715,
+      "cost_usd": 0.00014738
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 6345,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 2870,
+      "cost_usd": 0.0001269
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 6648,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 2536,
+      "cost_usd": 0.00013296
+    },
+    {
+      "role": "embed",
+      "model": "voyage-3.5-lite",
+      "input_tokens": 9802,
+      "output_tokens": 0,
+      "cache_read_tokens": 0,
+      "cache_write_tokens": 0,
+      "latency_ms": 1562,
+      "cost_usd": 0.00019604
+    }
+  ],
+  "total_cost_usd": 0.00290266,
+  "graph": null,
+  "crawl": {
+    "planned": 389,
+    "fetched": 76,
+    "embedded": 76,
+    "errors": 2,
+    "skipped": 6968,
+    "empty": 311,
+    "deleted": 0,
+    "remaining": 0,
+    "store_chunks": 62904,
+    "elapsed_s": 1950.5779999999795,
+    "embed_tokens": 145133,
+    "cost_usd": 0.00290266,
+    "stopped_by": "done",
+    "estimate_fetch_s": 1945.0,
+    "estimate_embed_s": 146.0
+  },
+  "bot_event": null
+}

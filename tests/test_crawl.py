@@ -371,6 +371,7 @@ def test_criterion_7_crawl_record_redacted(cli_root: Path) -> None:
     crawl = json.loads(text)["crawl"]
     assert (crawl["planned"], crawl["embedded"], crawl["errors"], crawl["skipped"]) == (3, 1, 1, 1)
     assert crawl["deleted"] == 1 and crawl["remaining"] == 1 and crawl["store_chunks"] == 1
+    assert (crawl["new"], crawl["changed"], crawl["report_posted"]) == (2, 1, False)
     assert crawl["embed_tokens"] > 0 and crawl["cost_usd"] > 0 and crawl["elapsed_s"] >= 0
     for title in [*REVS, "דף שנמחק", "כל עובד שכיר", "kolzchut.org.il/he", "failed"]:
         assert title not in text and title.replace(" ", "_") not in text

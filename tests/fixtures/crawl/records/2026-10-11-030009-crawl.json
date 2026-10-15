@@ -1,0 +1,27 @@
+{
+  "command": "crawl",
+  "started_at": "2026-10-11T03:00:09",
+  "dry_run": false,
+  "max_usd": 0.3,
+  "calls": [],
+  "total_cost_usd": 0.0028,
+  "crawl": {
+    "planned": 48,
+    "fetched": 47,
+    "embedded": 46,
+    "errors": 1,
+    "skipped": 7322,
+    "empty": 1,
+    "deleted": 2,
+    "remaining": 0,
+    "store_chunks": 98140,
+    "elapsed_s": 1530.0,
+    "embed_tokens": 139000,
+    "cost_usd": 0.0028,
+    "stopped_by": "done",
+    "estimate_fetch_s": 0.0,
+    "estimate_embed_s": 0.0,
+    "new": 5,
+    "changed": 43
+  }
+}

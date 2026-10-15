@@ -52,6 +52,13 @@
     "session_ttl_minutes": 30,
     "process_inline": false
   },
+  "mcp": {
+    "topics": {
+      "unemployment": ["אבטלה", "שירות התעסוקה"],
+      "pension": ["פנסי"],
+      "tax": ["מס הכנסה", "החזר מס"]
+    }
+  },
   "paths": {
     "runs_dir": "runs",
     "raw_dir": "data/raw",

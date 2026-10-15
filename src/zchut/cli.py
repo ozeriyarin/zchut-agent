@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import html
 import math
+import os
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -27,6 +29,7 @@ from zchut.bot.telegram import (
     SECRET_HEADER,
     SendLog,
     TelegramClient,
+    TelegramError,
     recording_client,
     synthetic_update,
 )
@@ -63,15 +66,18 @@ from zchut.index.manifest import ManifestError, load_manifest
 from zchut.index.store import (
     ChromaStore,
     InMemoryVectorStore,
+    PageStore,
     QdrantStore,
     StoreError,
     VectorStore,
     migrate,
 )
+from zchut.mcp.server import ServerDeps, create_server
 from zchut.run.ask import AskDeps
 from zchut.run.converse import run_conversation, run_turn
 from zchut.run.cost_guard import CostGuard, Outcome, guarded
 from zchut.run.cost_report import format_cost, summarize_runs
+from zchut.run.crawl_report import crawl_runs, format_report, mark_posted
 from zchut.run.records import FirestoreRunSink, LocalRunSink, RunRecorder, RunRecordSink
 from zchut.sources.fetch import Fetcher, FetchError, FetcherRouter, FixtureFetcher, HttpxFetcher
 from zchut.sources.mediawiki import MediaWikiFetcher, urllib_opener
@@ -86,6 +92,8 @@ store_app = typer.Typer(no_args_is_help=True, help="Move the index between store
 app.add_typer(store_app, name="store")
 bot_app = typer.Typer(no_args_is_help=True, help="The Telegram webhook bot.")
 app.add_typer(bot_app, name="bot")
+mcp_app = typer.Typer(no_args_is_help=True, help="The read-only MCP server over the index.")
+app.add_typer(mcp_app, name="mcp")
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 
@@ -218,7 +226,7 @@ def _qdrant(ctx: Context) -> QdrantStore:
     return QdrantStore(client)
 
 
-def _real_store(ctx: Context) -> VectorStore:
+def _real_store(ctx: Context) -> PageStore:
     if ctx.settings.store.backend == "qdrant":
         return _qdrant(ctx)
     return ChromaStore(ctx.settings.paths.chroma_dir)
@@ -293,7 +301,7 @@ def _config_errors() -> Iterator[None]:
     except (ConfigError, ManifestError) as exc:
         typer.echo(f"שגיאת תצורה: {exc}", err=True)
         raise typer.Exit(1) from exc
-    except (FetchError, StoreError) as exc:
+    except (FetchError, StoreError, TelegramError) as exc:
         typer.echo(f"שגיאה: {exc}", err=True)
         raise typer.Exit(1) from exc
 
@@ -515,6 +523,8 @@ def crawl_run(
     est = estimate(len(plan.todo), ctx.settings.crawl, ctx.settings.embed)
     record = CrawlRecord(
         planned=len(plan.todo),
+        new=plan.new,
+        changed=plan.changed,
         skipped=plan.unchanged,
         estimate_fetch_s=est.fetch_s,
         estimate_embed_s=est.embed_s,
@@ -528,6 +538,73 @@ def crawl_run(
     outcome = guarded(ctx.recorder, action)
     _finish(ctx, outcome, [])
     raise typer.Exit(outcome.exit_code)
+
+
+@crawl_app.command("report")
+def crawl_report(
+    post: Annotated[
+        bool, typer.Option("--notify", help="Also post the report to the owner's Telegram chat.")
+    ] = False,
+) -> None:
+    """Print the Hebrew diff of the last two crawl records and the manifest."""
+    with _config_errors():
+        settings = load_settings(Path.cwd())
+        runs = crawl_runs(settings.paths.runs_dir)
+        if not runs:
+            typer.echo(f"אין רשומת סריקה ב-{settings.paths.runs_dir}", err=True)
+            raise typer.Exit(1)
+        previous = runs[-2] if len(runs) > 1 else None
+        text = format_report(runs[-1], previous, load_manifest(settings.paths.manifest))
+        typer.echo(text)
+        if post:
+            _notify(settings, text)
+            mark_posted(runs[-1])
+            typer.echo("הדוח נשלח בטלגרם.")
+
+
+def _telegram(token: str, timeout_s: float) -> TelegramClient:
+    return TelegramClient(httpx.Client(timeout=timeout_s), token)
+
+
+def _notify(settings: Settings, text: str) -> None:
+    secrets = load_secrets(_dotenv_path())
+    ids = secrets.allowed_chat_ids()
+    if len(ids) != 1:
+        raise ConfigError("TELEGRAM_ALLOWED_CHAT_IDS must hold exactly one chat id for notify")
+    [chat_id] = ids
+    telegram = _telegram(secrets.require("TELEGRAM_BOT_TOKEN"), settings.answer.timeout_s)
+    telegram.send_message(chat_id, html.escape(text))
+
+
+@app.command()
+def notify(text: Annotated[str, typer.Argument(help="The message, plain text.")]) -> None:
+    """Send one Telegram message to the single allowed chat id."""
+    with _config_errors():
+        _notify(load_settings(Path.cwd()), text)
+
+
+@mcp_app.command("serve")
+def mcp_serve() -> None:
+    """Serve the read-only search and fetch tools over stdio."""
+    # MCP clients start the server in their own folder; config and index paths are repo-relative.
+    os.chdir(PACKAGE_ROOT)
+    with _config_errors():
+        ctx = _context("mcp", False, None)
+        paths = ctx.settings.paths
+
+        def last_crawl() -> str | None:
+            runs = crawl_runs(paths.runs_dir)
+            return runs[-1].record.started_at if runs else None
+
+        deps = ServerDeps(
+            _embedder(ctx),
+            _real_store(ctx),
+            ctx.guard,
+            ctx.settings.mcp.topics,
+            lambda: load_manifest(paths.manifest),
+            last_crawl,
+        )
+    create_server(deps).run("stdio")
 
 
 @store_app.command("migrate")
