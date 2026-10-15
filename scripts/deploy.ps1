@@ -66,7 +66,8 @@ function Set-Secret([string]$Name, [string]$Value) {
     $tmp = New-TemporaryFile
     try {
         [IO.File]::WriteAllText($tmp, $Value)
-        & gcloud secrets describe $Name --project $Project 2>&1 | Out-Null
+        # cmd swallows gcloud's stderr so PowerShell 5.1/7 never turns NOT_FOUND into an error record
+        cmd /c "gcloud secrets describe $Name --project $Project >nul 2>&1"
         if ($LASTEXITCODE -ne 0) {
             Invoke-Gcloud secrets create $Name --project $Project --replication-policy automatic
         }
