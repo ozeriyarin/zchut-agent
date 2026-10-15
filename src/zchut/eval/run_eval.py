@@ -209,6 +209,19 @@ def _graph_row(q: EvalQuestion, hits: list[Hit], combo: GraphDeps, guard: CostGu
     )
 
 
+def retrieve_questions(
+    questions: Sequence[EvalQuestion], deps: AskDeps, guard: CostGuard
+) -> list[tuple[EvalQuestion, list[Hit]]]:
+    vectors = guard.embed(deps.embedder, [q.question for q in questions], "query")
+    return [(q, search(q.question, v, deps)) for q, v in zip(questions, vectors, strict=True)]
+
+
+def retrieval_report(
+    found: Sequence[tuple[EvalQuestion, list[Hit]]], min_score: float
+) -> EvalReport:
+    return build_report([_row(q, hits, should_refuse(hits, min_score)) for q, hits in found])
+
+
 def run_eval(
     questions: Sequence[EvalQuestion],
     deps: AskDeps,
@@ -219,11 +232,9 @@ def run_eval(
     reports: list[EvalReport] = []
 
     def action() -> str:
-        vectors = guard.embed(deps.embedder, [q.question for q in questions], "query")
-        found = [(q, search(q.question, v, deps)) for q, v in zip(questions, vectors, strict=True)]
+        found = retrieve_questions(questions, deps, guard)
         if not combos:
-            rows = [_row(q, hits, should_refuse(hits, deps.min_score)) for q, hits in found]
-            reports.append(build_report(rows))
+            reports.append(retrieval_report(found, deps.min_score))
         for combo in combos:
             rows = [_graph_row(q, h, combo, guard) for q, h in found]
             reports.append(build_report(rows, combo, labels))

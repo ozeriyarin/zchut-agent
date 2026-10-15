@@ -51,8 +51,21 @@ def split_text(text: str, max_chars: int) -> list[str]:
     return out
 
 
-def chunk_page(page: Page, max_chars: int, min_chars: int) -> list[Chunk]:
+def make_chunk(page: Page, index: int, section: str, text: str) -> Chunk:
     prefix = hashlib.sha256(page.url.encode("utf-8")).hexdigest()[:12]
+    return Chunk(
+        id=f"{prefix}-{index:03d}",
+        url=page.url,
+        title=page.title,
+        section=section,
+        text=text,
+        fetched_at=page.fetched_at.isoformat(),
+        license=page.license,
+        last_updated=page.last_updated.isoformat() if page.last_updated else None,
+    )
+
+
+def chunk_page(page: Page, max_chars: int, min_chars: int) -> list[Chunk]:
     chunks: list[Chunk] = []
     runs = groupby(page.sections, key=lambda s: (_parent(s), len(s.headings)))
     for _, run in runs:
@@ -62,16 +75,5 @@ def chunk_page(page: Page, max_chars: int, min_chars: int) -> list[Chunk]:
                 path = (*_parent(group[0]), MERGED_SEP.join(s.headings[-1] for s in group))
             section = PATH_SEP.join((page.title, *path))
             for text in split_text(_render(group), max_chars):
-                chunks.append(
-                    Chunk(
-                        id=f"{prefix}-{len(chunks):03d}",
-                        url=page.url,
-                        title=page.title,
-                        section=section,
-                        text=text,
-                        fetched_at=page.fetched_at.isoformat(),
-                        license=page.license,
-                        last_updated=page.last_updated.isoformat() if page.last_updated else None,
-                    )
-                )
+                chunks.append(make_chunk(page, len(chunks), section, text))
     return chunks

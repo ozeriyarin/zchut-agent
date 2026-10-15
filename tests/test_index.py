@@ -179,3 +179,15 @@ def test_chroma_store_replaces_and_searches(tmp_path: Path) -> None:
     assert [h.chunk for h in hits] == [base, other]
     assert [h.score for h in hits] == [pytest.approx(1.0), pytest.approx(0.6, abs=1e-6)]
     assert ChromaStore(tmp_path / "chroma").count() == 2
+
+
+def test_chroma_store_keys_relative_paths_by_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chunk = Chunk("a-000", AVTALA, "דמי אבטלה", "דמי אבטלה", "טקסט", "2026-10-13", "gov.il", None)
+    for name in ("a", "b"):
+        (tmp_path / name).mkdir()
+    monkeypatch.chdir(tmp_path / "a")
+    ChromaStore(Path(".chroma")).replace(AVTALA, [chunk], [[1.0, 0.0]])
+    monkeypatch.chdir(tmp_path / "b")
+    assert ChromaStore(Path(".chroma")).count() == 0

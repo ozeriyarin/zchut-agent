@@ -8,12 +8,16 @@ BACKOFF_START_S = 20.0
 BACKOFF_CAP_S = 60.0
 
 
+def capped_backoff_s(attempt: int) -> float:
+    return min(BACKOFF_START_S * 2.0**attempt, BACKOFF_CAP_S)
+
+
 def backoff_s(response: httpx.Response, attempt: int) -> float:
     retry_after: str = response.headers.get("Retry-After", "")
     try:
         return max(0.0, float(retry_after))
     except ValueError:
-        return min(BACKOFF_START_S * 2.0**attempt, BACKOFF_CAP_S)
+        return capped_backoff_s(attempt)
 
 
 def send_with_backoff(

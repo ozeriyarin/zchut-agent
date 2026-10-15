@@ -111,12 +111,13 @@ class StoreError(Exception):
 
 
 class ChromaStore:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, collection: str = COLLECTION) -> None:
+        # Chroma caches clients by path string; a relative path could alias another folder.
         client = chromadb.PersistentClient(
-            path=str(path), settings=ChromaSettings(anonymized_telemetry=False)
+            path=str(path.resolve()), settings=ChromaSettings(anonymized_telemetry=False)
         )
         self._collection = client.get_or_create_collection(
-            COLLECTION, metadata={"hnsw:space": "cosine"}, embedding_function=None
+            collection, metadata={"hnsw:space": "cosine"}, embedding_function=None
         )
         self._store = ChromaVectorStore(chroma_collection=self._collection)
 

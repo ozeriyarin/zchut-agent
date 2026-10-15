@@ -7,7 +7,7 @@
     "https://www.kolzchut.org.il/he/דמי_אבטלה_לעובדים_עצמאים",
     "https://www.kolzchut.org.il/he/פנסיה"
   ],
-  "chunk": {"max_chars": 700, "min_chars": 100},
+  "chunk": {"max_chars": 700, "min_chars": 100, "engine": "section", "overlap": 70},
   "retrieval": {"k": 5, "min_score": 0.57, "dry_run_min_score": 0.3, "mode": "vector"},
   "max_usd": 0.08,
   "models": {
@@ -23,7 +23,7 @@
     "min_interval_s": 1.0,
     "timeout_s": 20
   },
-  "embed": {"max_retries": 5, "max_batch_tokens": 8000, "min_interval_s": 1},
+  "embed": {"max_retries": 5, "max_batch_tokens": 8000, "min_interval_s": 1, "engine": "httpx"},
   "graph": {
     "classify_max_tokens": 200,
     "verify_max_tokens": 400,

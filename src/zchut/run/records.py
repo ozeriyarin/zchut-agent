@@ -49,6 +49,7 @@ class RunRecorder:
                 cache_write_tokens=usage.cache_write_tokens,
                 latency_ms=latency_ms,
                 cost_usd=cost,
+                cost_estimated=usage.estimated,
             )
         )
         self.record.total_cost_usd = sum(c.cost_usd for c in self.record.calls)

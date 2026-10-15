@@ -13,9 +13,16 @@ class ConfigError(Exception):
     pass
 
 
+ChunkEngine = Literal["section", "llama-markdown", "llama-sentence"]
+EmbedEngine = Literal["httpx", "llama"]
+
+
+# Engine fields are excluded from model_dump(): callers splat the dump into chunker/embedder args.
 class ChunkSettings(BaseModel):
     max_chars: int = Field(gt=0)
     min_chars: int = Field(ge=0)
+    engine: ChunkEngine = Field(default="section", exclude=True)
+    overlap: int = Field(default=0, ge=0, exclude=True)
 
 
 class RetrievalSettings(BaseModel):
@@ -48,6 +55,7 @@ class EmbedSettings(BaseModel):
     max_retries: int = Field(default=5, gt=0)
     max_batch_tokens: int = Field(default=8000, gt=0)
     min_interval_s: float = Field(default=0.0, ge=0)
+    engine: EmbedEngine = Field(default="httpx", exclude=True)
 
 
 class CrawlSettings(BaseModel):
@@ -89,6 +97,7 @@ class PathSettings(BaseModel):
     manifest: Path = Path("data/manifest.json")
     verifier_labels: Path = Path("eval/verifier_labels.json")
     keyword_index: Path = Path("data/keyword-index.pkl")
+    reports_dir: Path = Path("reports")
 
 
 class StoreSettings(BaseModel):

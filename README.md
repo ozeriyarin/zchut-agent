@@ -6,14 +6,15 @@ answer carries numbered citations `[1]`, `[2]` that link to the source pages and
 dates; when retrieval is too weak to ground an answer it says so in one fixed sentence instead of
 guessing. Every AI call is recorded (model, tokens, cost, latency) under `runs/`.
 
-**Status: v5b shipped** (hybrid retrieval: BM25 fused with vector search; see "Hybrid
-retrieval").
+**Status: v6 shipped** (framework comparison: LlamaIndex chunker and embedder measured
+against the hand-written pipeline; see "Framework comparison").
 Specs: `agent-os/specs/2026-10-13-zchut-v1-ingest-ask/spec.md`,
 `agent-os/specs/2026-10-13-zchut-v2-conversation/spec.md`,
 `agent-os/specs/2026-10-13-zchut-v3-full-corpus/spec.md`,
 `agent-os/specs/2026-10-13-zchut-v4-telegram/spec.md`,
 `agent-os/specs/2026-10-15-zchut-v5-mcp-and-reingest/spec.md`,
-`agent-os/specs/2026-10-15-zchut-v5b-hybrid-retrieval/spec.md`.
+`agent-os/specs/2026-10-15-zchut-v5b-hybrid-retrieval/spec.md`,
+`agent-os/specs/2026-10-15-zchut-v6-framework-comparison/spec.md`.
 
 The project is spec-driven (Agent OS v3): product docs in `agent-os/product/`, coding standards in
 `agent-os/standards/`, one spec per version in `agent-os/specs/`. Every acceptance criterion has a
@@ -57,6 +58,7 @@ zchut ask "כמה אקבל דמי אבטלה?" --dry-run --reply "שכיר"   # 
 zchut eval --dry-run                                 # add --retrieval-only to skip answers
 zchut eval --dry-run --tiers haiku,qwen-openrouter --verifiers haiku,jev
 zchut chat --dry-run                                 # several questions; an empty line ends it
+zchut compare --dry-run                              # section vs LlamaIndex engines, fixture pages
 
 # real run: Voyage + Chroma (.chroma/) + Haiku; needs the keys below
 zchut ingest                                         # fetch config/zchut.json sources
@@ -284,6 +286,70 @@ question's words over the right short section, and the four pension misses did n
 code stays behind `retrieval.mode` for later work on the tokenizer (stemming, stop words) or a
 cross-encoder reranker; the default remains `vector`.
 
+## Framework comparison
+
+"Would LlamaIndex have done this better?" gets a number instead of an opinion (spec
+`agent-os/specs/2026-10-15-zchut-v6-framework-comparison/spec.md`). LlamaIndex's node parsers and
+its Voyage embedding wrapper plug in behind the same seams as the hand-written code (a chunker is
+`Page -> list[Chunk]`, the embedder is the `Embedder` protocol), so the store, eval and citations
+do not change and every chunk keeps url, title, section path, license and dates.
+
+| engine | what it does differently |
+| --- | --- |
+| `section` (baseline) | Splits on the page's h2/h3 headings, merges short sibling sections, splits long ones at line and word breaks under `chunk.max_chars`; section = `title > h2 > h3`. |
+| `llama-markdown` | Renders the page as Markdown (`#` title, `##`/`###` from the section path) and runs `MarkdownNodeParser`: one chunk per heading, no merging of short sections and no size cap; the section path comes from the parser's `header_path`. |
+| `llama-sentence` | Runs `SentenceSplitter` on the plain page text with `chunk_size = chunk.max_chars` characters and `chunk.overlap` overlap: sentence-aware windows that ignore headings, so the section is the page title only. |
+| `llama` embedder | `VoyageEmbedding` from `llama-index-embeddings-voyageai` behind the same batching, pacing and retry limits. The wrapper returns vectors only (Voyage's usage block is dropped), so tokens are estimated as chars / 2 and the call is recorded with `cost_estimated: true`. |
+
+`chunk.engine` (`section | llama-markdown | llama-sentence`) and `embed.engine` (`httpx | llama`)
+in `config/zchut.json` choose the defaults (`section`, `httpx`). For a manual side-by-side,
+`zchut ingest --engine llama-markdown --collection cmp` indexes the configured pages into a named
+Chroma collection (the default index is untouched) and `zchut eval --retrieval-only --collection
+cmp` scores it. `zchut compare` runs the four combinations on `config.sources` (each into its own
+`cmp-<chunk>-<embed>` collection), prints the table and writes `reports/compare-<date>.json`;
+`--dry-run` uses the fixture pages, the fake embedder and in-memory stores.
+
+The recommendation line follows one rule in code: adopt an engine only if its hit@3 is at least
+the baseline's and its mean best score (over the questions that expect a source) is at least the
+baseline's minus 0.02; among several, the highest hit@3 then score wins; otherwise keep the
+baseline. Nothing switches by itself: the owner edits `chunk.engine` / `embed.engine` by hand.
+
+Dry run (`zchut compare --dry-run`, three fixture pages, fake embedder, 30 questions):
+
+| engine | chunks | mean chunk chars | hit@3 | mean best score | embed tokens | cost (USD) | elapsed (s) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| section + httpx | 20 | 139 | 0.63 | 0.50 | 2398 | 0.00000 | 0.1 |
+| llama-markdown + httpx | 22 | 125 | 0.63 | 0.50 | 2408 | 0.00000 | 0.1 |
+| llama-sentence + httpx | 7 | 468 | 0.63 | 0.46 | 2253 | 0.00000 | 0.1 |
+| section + llama | 20 | 139 | 0.63 | 0.50 | 2398 | 0.00000 | 0.1 |
+
+The dry run proves the plumbing only: both embed engines are the same fake there, so the last row
+repeats the baseline, and on three pages every engine finds the same pages. Its recommendation
+line ("adopt llama-markdown + httpx": hit@3 0.63 against 0.63, mean best score 0.498 against
+0.496) shows the rule at work on a tie and means nothing about the real engines. The decision is the
+owner's real run on the six calibration pages (well under a cent of Voyage tokens):
+
+| engine | chunks | mean chunk chars | hit@3 | mean best score | embed tokens | cost (USD) | elapsed (s) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| section + httpx | 83 | 352 | 0.85 | 0.59 | 13698 | 0.00027 | 62.6 |
+| llama-markdown + httpx | 79 | 366 | 0.89 | 0.59 | 13491 | 0.00027 | 7.3 |
+| llama-sentence + httpx | 55 | 581 | 0.85 | 0.59 | 13462 | 0.00027 | 11.1 |
+| section + llama | 83 | 352 | 0.85 | 0.59 | 17258 | 0.00035 (est.) | 9.9 |
+
+Real run, 2026-10-15 (the first row's elapsed time includes fetching the pages at the crawl delay;
+the other rows reuse them). The rule recommends `llama-markdown + httpx`: one more question in the
+top three out of 30, same mean score, about the same chunk count. One question on six pages is
+within noise, so the default stays `section` until the full corpus is re-indexed and the 30
+questions are scored on both again; the llama embedder wrapper adds nothing (it is the same Voyage
+model behind another client) and its cost is only estimated, so `embed.engine` stays `httpx`.
+
+Why the pipeline was hand-rolled first: every chunk, citation and cost line had to be auditable
+end to end, and a few dozen lines of explicit code are easier to read, test and defend than a
+framework default. Hebrew kolzchut pages carry their meaning in the section headings, so the
+chunker had to keep the `title > h2 > h3` path on every chunk and merge the many short sibling
+sections, which no off-the-shelf parser did out of the box. And adopting a framework piece is a
+measurement, not a belief: with both pipelines behind the same seams, the same pages and the same
+30 questions, LlamaIndex is adopted where it wins and the table says why.
 
 ## Prompt rules
 

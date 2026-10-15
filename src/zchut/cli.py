@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast, get_args
 
 import anthropic
 import click
@@ -34,13 +34,23 @@ from zchut.bot.telegram import (
     synthetic_update,
 )
 from zchut.config import (
+    ChunkEngine,
     ConfigError,
+    EmbedEngine,
     Prices,
     Secrets,
     Settings,
     load_prices,
     load_secrets,
     load_settings,
+)
+from zchut.eval.compare import (
+    Combo,
+    CompareDeps,
+    MemoFetcher,
+    format_compare,
+    run_compare,
+    write_report,
 )
 from zchut.eval.conversations import load_conversations, run_conversations
 from zchut.eval.labels import load_labels
@@ -63,6 +73,8 @@ from zchut.index.crawl import CrawlDeps, estimate, format_plan, format_run, make
 from zchut.index.embedder import FAKE_EMBED_MODEL, Embedder, FakeEmbedder, VoyageEmbedder
 from zchut.index.ingest import ingest as ingest_pages
 from zchut.index.keyword import KeywordIndex, load_keyword_index
+from zchut.index.llama_chunker import make_chunker
+from zchut.index.llama_embedder import LlamaVoyageEmbedder
 from zchut.index.manifest import ManifestError, load_manifest
 from zchut.index.store import (
     ChromaStore,
@@ -110,6 +122,10 @@ VerifierOpt = Annotated[
     str, typer.Option("--verifier", click_type=click.Choice(VERIFIERS), help="Verifier tier.")
 ]
 NoVerify = Annotated[bool, typer.Option("--no-verify", help="Skip the verify step.")]
+CollectionOpt = Annotated[
+    str | None,
+    typer.Option("--collection", help="Named Chroma collection (default: the main index)."),
+]
 ModeOpt = Annotated[
     str | None,
     typer.Option(
@@ -153,13 +169,12 @@ def _context(command: str, dry_run: bool, max_usd: float | None) -> Context:
     return Context(settings, prices, load_secrets(_dotenv_path()), recorder, guard, dry_run)
 
 
-def _embedder(ctx: Context) -> Embedder:
+def _embedder(ctx: Context, engine: EmbedEngine | None = None) -> Embedder:
     if ctx.dry_run:
         return FakeEmbedder()
     embed = ctx.settings.embed
-    return VoyageEmbedder(
-        ctx.secrets.require_voyage(), ctx.settings.models.embed, **embed.model_dump()
-    )
+    kind = LlamaVoyageEmbedder if (engine or embed.engine) == "llama" else VoyageEmbedder
+    return kind(ctx.secrets.require_voyage(), ctx.settings.models.embed, **embed.model_dump())
 
 
 def _answer_model(ctx: Context, tier: str) -> AnswerModel:
@@ -207,9 +222,13 @@ def _ingest(
     embedder: Embedder,
     store: VectorStore,
     guard: CostGuard,
+    engine: ChunkEngine | None = None,
 ) -> IngestReport:
     chunk = ctx.settings.chunk
-    return ingest_pages(urls, fetcher, embedder, store, guard, chunk.max_chars, chunk.min_chars)
+    chunker = make_chunker(chunk, engine)
+    return ingest_pages(
+        urls, fetcher, embedder, store, guard, chunk.max_chars, chunk.min_chars, chunker
+    )
 
 
 def _wiki(settings: Settings) -> MediaWikiFetcher:
@@ -235,7 +254,9 @@ def _qdrant(ctx: Context) -> QdrantStore:
     return QdrantStore(client)
 
 
-def _real_store(ctx: Context) -> PageStore:
+def _real_store(ctx: Context, collection: str | None = None) -> PageStore:
+    if collection is not None:
+        return ChromaStore(ctx.settings.paths.chroma_dir, collection)
     if ctx.settings.store.backend == "qdrant":
         return _qdrant(ctx)
     return ChromaStore(ctx.settings.paths.chroma_dir)
@@ -245,9 +266,9 @@ def _firestore(ctx: Context) -> FirestoreClient:
     return FirestoreClient(project=ctx.secrets.require("GOOGLE_CLOUD_PROJECT"))
 
 
-def _store(ctx: Context, embedder: Embedder) -> VectorStore:
+def _store(ctx: Context, embedder: Embedder, collection: str | None = None) -> VectorStore:
     if not ctx.dry_run:
-        return _real_store(ctx)
+        return _real_store(ctx, collection)
     store = InMemoryVectorStore()
     fixtures = FixtureFetcher(ctx.settings.paths.fixtures_dir)
     setup = CostGuard(math.inf, ctx.prices, RunRecorder("setup", True, math.inf))
@@ -262,15 +283,21 @@ def _keyword(ctx: Context, store: VectorStore) -> KeywordIndex:
     return load_keyword_index(store, load_manifest(paths.manifest), paths.keyword_index)
 
 
-def _deps(ctx: Context, k: int | None, mode: str | None = None) -> AskDeps:
+def _min_score(ctx: Context) -> float:
+    retrieval = ctx.settings.retrieval
+    return retrieval.dry_run_min_score if ctx.dry_run else retrieval.min_score
+
+
+def _deps(
+    ctx: Context, k: int | None, mode: str | None = None, collection: str | None = None
+) -> AskDeps:
     embedder = _embedder(ctx)
     retrieval = ctx.settings.retrieval
-    store = _store(ctx, embedder)
+    store = _store(ctx, embedder, collection)
     keyword = _keyword(ctx, store) if (mode or retrieval.mode) == "hybrid" else None
     # The answer model is set per tier in _graph_deps; retrieval-only evals never call it.
     model = FakeAnswerModel()
-    threshold = retrieval.dry_run_min_score if ctx.dry_run else retrieval.min_score
-    return AskDeps(embedder, store, model, k or retrieval.k, threshold, keyword)
+    return AskDeps(embedder, store, model, k or retrieval.k, _min_score(ctx), keyword)
 
 
 def _graph_deps(ctx: Context, ask: AskDeps, tier: str, verifier: str | None) -> GraphDeps:
@@ -324,6 +351,13 @@ def _config_errors() -> Iterator[None]:
         raise typer.Exit(1) from exc
 
 
+def _pages(ctx: Context, from_fixtures: Path | None) -> tuple[Fetcher, list[str]]:
+    if from_fixtures is None and not ctx.dry_run:
+        return _live_fetcher(ctx.settings), ctx.settings.sources
+    fixtures = FixtureFetcher(from_fixtures or ctx.settings.paths.fixtures_dir)
+    return fixtures, fixtures.urls()
+
+
 @app.callback()
 def main() -> None:
     for stream in (sys.stdout, sys.stderr):
@@ -339,6 +373,15 @@ def ingest(
             "--from-fixtures", exists=True, file_okay=False, help="Index saved pages from a folder."
         ),
     ] = None,
+    engine: Annotated[
+        str | None,
+        typer.Option(
+            "--engine",
+            click_type=click.Choice(get_args(ChunkEngine)),
+            help="Chunk engine (default from config).",
+        ),
+    ] = None,
+    collection: CollectionOpt = None,
     dry_run: DryRun = False,
     max_usd: MaxUsd = None,
 ) -> None:
@@ -346,17 +389,13 @@ def ingest(
     with _config_errors():
         ctx = _context("ingest", dry_run, max_usd)
         embedder = _embedder(ctx)
-        store = InMemoryVectorStore() if dry_run else _real_store(ctx)
-    fetcher: Fetcher
-    if from_fixtures is not None or dry_run:
-        fixtures = FixtureFetcher(from_fixtures or ctx.settings.paths.fixtures_dir)
-        fetcher, urls = fixtures, fixtures.urls()
-    else:
-        fetcher, urls = _live_fetcher(ctx.settings), ctx.settings.sources
+        store = InMemoryVectorStore() if dry_run else _real_store(ctx, collection)
+    fetcher, urls = _pages(ctx, from_fixtures)
+    chunk_engine = cast(ChunkEngine | None, engine)
     record = ctx.recorder.record
 
     def action() -> str:
-        report = _ingest(ctx, fetcher, urls, embedder, store, ctx.guard)
+        report = _ingest(ctx, fetcher, urls, embedder, store, ctx.guard, chunk_engine)
         record.pages_indexed, record.chunks_indexed = report.pages, report.chunks
         record.errors.extend(report.errors)
         lines = [
@@ -433,6 +472,7 @@ def eval_(
         bool, typer.Option("--conversations", help="Score the multi-turn conversations instead.")
     ] = False,
     mode: ModeOpt = None,
+    collection: CollectionOpt = None,
     dry_run: DryRun = False,
     max_usd: MaxUsd = None,
 ) -> None:
@@ -444,7 +484,7 @@ def eval_(
         ctx = _context("eval", dry_run, max_usd)
         questions = load_questions(ctx.settings.paths.questions)
         labels = load_labels(ctx.settings.paths.verifier_labels)
-        deps = _deps(ctx, None, mode)
+        deps = _deps(ctx, None, mode, collection)
         names = parse_choices(tiers, TIERS) if tiers else [tier]
         checks: list[str | None] = [None] if no_verify else [*parse_choices(verifiers, VERIFIERS)]
         combos = (
@@ -477,6 +517,42 @@ def _eval_conversations(
         report_path = path.with_name(f"{path.stem}-conversations-report.json")
         report_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
         typer.echo(f"דוח הערכה: {report_path}")
+    raise typer.Exit(outcome.exit_code)
+
+
+@app.command()
+def compare(dry_run: DryRun = False, max_usd: MaxUsd = None) -> None:
+    """Score section vs LlamaIndex chunking and embedding on the configured pages."""
+    with _config_errors():
+        ctx = _context("compare", dry_run, max_usd)
+        settings = ctx.settings
+        fetcher, urls = _pages(ctx, None)
+        chroma_dir = settings.paths.chroma_dir
+
+        def store_for(combo: Combo) -> VectorStore:
+            return InMemoryVectorStore() if dry_run else ChromaStore(chroma_dir, combo.collection)
+
+        engines: tuple[EmbedEngine, ...] = get_args(EmbedEngine)
+        deps = CompareDeps(
+            urls,
+            MemoFetcher(fetcher),
+            load_questions(settings.paths.questions),
+            settings.chunk,
+            {e: _embedder(ctx, e) for e in engines},
+            store_for,
+            settings.retrieval.k,
+            _min_score(ctx),
+        )
+
+    def action() -> str:
+        report = run_compare(deps, ctx.guard, dry_run)
+        path = write_report(report, settings.paths.reports_dir)
+        errors = [f"  - {e}" for row in report.rows for e in row.errors]
+        table = format_compare(report.rows)
+        return "\n".join([table, *errors, report.recommendation, f"דוח השוואה: {path}"])
+
+    outcome = guarded(ctx.recorder, action)
+    _finish(ctx, outcome, [])
     raise typer.Exit(outcome.exit_code)
 
 
