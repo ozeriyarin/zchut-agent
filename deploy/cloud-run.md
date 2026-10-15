@@ -127,14 +127,14 @@ foreach ($name in "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "QDRANT_API_K
 
 ```powershell
 gcloud builds submit --region $Region --tag $Image `
-  --service-account "projects/$Project/serviceAccounts/$BuildAs" --gcs-log-dir "$BuildBucket/logs" .
+  --config cloudbuild.yaml --substitutions "_IMAGE=$Image" `
+  --service-account "projects/$Project/serviceAccounts/$BuildAs" .
 ```
 
 The build runs as `zchut-build` (section 3), not the default compute account. Cloud Build refuses
 a build with its own service account unless the logs have a home: `--tag` builds have no logging
-option, so `--gcs-log-dir` puts them in the same bucket as the source, and they still reach Cloud
-Logging through `roles/logging.logWriter`.
-
+Logs go to Cloud Logging only (`options.logging: CLOUD_LOGGING_ONLY` in `cloudbuild.yaml`), so the
+build account needs no write access to any bucket beyond the source upload.
 ## 6. Deploy
 
 The webhook answers 200 at once and keeps working on the update in a background task, so the CPU

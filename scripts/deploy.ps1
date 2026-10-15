@@ -206,9 +206,8 @@ function Step-Check {
 }
 
 function Step-Build {
-    Invoke-Gcloud builds submit --project $Project --region $Region --tag $Image `
-        --service-account "projects/$Project/serviceAccounts/$BuildAs" `
-        --gcs-log-dir "$BuildBucket/logs" .
+    Invoke-Gcloud builds submit --project $Project --region $Region --config cloudbuild.yaml `
+    --substitutions "_IMAGE=$Image" --service-account "projects/$Project/serviceAccounts/$BuildAs" .
 }
 
 function Step-Deploy {

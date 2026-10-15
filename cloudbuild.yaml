@@ -1,0 +1,12 @@
+# Build and push the bot image with Cloud Logging only, so the dedicated build account
+# needs no write access to a logs bucket.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "${_IMAGE}", "."]
+  - name: gcr.io/cloud-builders/docker
+    args: ["push", "${_IMAGE}"]
+images: ["${_IMAGE}"]
+options:
+  logging: CLOUD_LOGGING_ONLY
+substitutions:
+  _IMAGE: ""
