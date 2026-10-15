@@ -26,6 +26,7 @@ SPEC_ROWS: list[tuple[str, str, int]] = [
     ("2026-10-13-zchut-v4-telegram", "", 8),
     ("2026-10-15-zchut-v4b-conversation-quality", "", 11),
     ("2026-10-15-zchut-v5-mcp-and-reingest", "", 6),
+    ("2026-10-15-zchut-v5b-hybrid-retrieval", "", 5),
 ]
 UNIMPLEMENTED: set[str] = set()
 
@@ -82,3 +83,8 @@ def test_criterion_6_v4a_pytest_passes_every_criterion_quoted() -> None:
 def test_criterion_6_v5_pytest_passes_every_criterion_quoted() -> None:
     """criterion 6: "`pytest` passes; every criterion has a test whose name quotes it." """
     assert len(criteria("2026-10-15-zchut-v5-mcp-and-reingest")) == 6
+
+
+def test_criterion_5_v5b_pytest_passes_every_criterion_quoted() -> None:
+    """criterion 5: "`pytest` passes; every criterion has a test whose name quotes it." """
+    assert len(criteria("2026-10-15-zchut-v5b-hybrid-retrieval")) == 5

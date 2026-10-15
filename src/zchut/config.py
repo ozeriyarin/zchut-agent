@@ -22,6 +22,7 @@ class RetrievalSettings(BaseModel):
     k: int = Field(gt=0)
     min_score: float
     dry_run_min_score: float = 0.3
+    mode: Literal["vector", "hybrid"] = "vector"
 
 
 class ModelSettings(BaseModel):
@@ -87,6 +88,7 @@ class PathSettings(BaseModel):
     conversations: Path = Path("eval/conversations.json")
     manifest: Path = Path("data/manifest.json")
     verifier_labels: Path = Path("eval/verifier_labels.json")
+    keyword_index: Path = Path("data/keyword-index.pkl")
 
 
 class StoreSettings(BaseModel):

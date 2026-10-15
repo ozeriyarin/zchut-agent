@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Protocol
 
 import chromadb
+from chromadb.api.types import GetResult
 from chromadb.config import Settings as ChromaSettings
 from llama_index.core.schema import NodeRelationship, RelatedNodeInfo, TextNode
 from llama_index.core.vector_stores.types import VectorStoreQuery
@@ -32,6 +33,8 @@ class VectorStore(Protocol):
     def search(self, vector: Sequence[float], k: int) -> list[Hit]: ...
 
     def count(self) -> int: ...
+
+    def chunks(self) -> Iterator[Chunk]: ...
 
 
 class PageStore(VectorStore, Protocol):
@@ -65,6 +68,9 @@ class InMemoryVectorStore:
     def count(self) -> int:
         return sum(len(rows) for rows in self._by_url.values())
 
+    def chunks(self) -> Iterator[Chunk]:
+        return (chunk for rows in self._by_url.values() for chunk, _ in rows)
+
     def page(self, url: str) -> list[Chunk]:
         return sorted((chunk for chunk, _ in self._by_url.get(url, [])), key=lambda c: c.id)
 
@@ -93,6 +99,11 @@ def _chunk(node_id: str, text: str, metadata: dict[str, object]) -> Chunk:
         license=meta["license"],
         last_updated=meta["last_updated"] or None,
     )
+
+
+def _got_chunks(got: GetResult) -> list[Chunk]:
+    docs, metas = got["documents"] or [], got["metadatas"] or []
+    return [_chunk(i, d, dict(m)) for i, d, m in zip(got["ids"], docs, metas, strict=True)]
 
 
 class StoreError(Exception):
@@ -133,9 +144,14 @@ class ChromaStore:
 
     def page(self, url: str) -> list[Chunk]:
         got = self._collection.get(where={"url": url}, include=["documents", "metadatas"])
-        docs, metas = got["documents"] or [], got["metadatas"] or []
-        chunks = [_chunk(i, d, dict(m)) for i, d, m in zip(got["ids"], docs, metas, strict=True)]
-        return sorted(chunks, key=lambda c: c.id)
+        return sorted(_got_chunks(got), key=lambda c: c.id)
+
+    def chunks(self, batch: int = 1000) -> Iterator[Chunk]:
+        for offset in range(0, self.count(), batch):
+            got = self._collection.get(
+                include=["documents", "metadatas"], limit=batch, offset=offset
+            )
+            yield from _got_chunks(got)
 
     def rows(self, batch: int) -> Iterator[Rows]:
         for offset in range(0, self.count(), batch):
@@ -149,6 +165,14 @@ class ChromaStore:
                 (_chunk(i, d, dict(m)), [float(x) for x in v])
                 for i, d, m, v in zip(got["ids"], docs, metas, vecs, strict=True)
             ]
+
+
+def _payload_chunks(points: Sequence[qm.Record]) -> list[Chunk]:
+    return [
+        _chunk(str(p.payload["chunk_id"]), str(p.payload["text"]), p.payload)
+        for p in points
+        if p.payload is not None
+    ]
 
 
 def _url_filter(url: str) -> qm.Filter:
@@ -199,12 +223,15 @@ class QdrantStore:
 
     def page(self, url: str) -> list[Chunk]:
         points, _ = self._client.scroll(COLLECTION, scroll_filter=_url_filter(url), limit=10_000)
-        chunks = [
-            _chunk(str(p.payload["chunk_id"]), str(p.payload["text"]), p.payload)
-            for p in points
-            if p.payload is not None
-        ]
-        return sorted(chunks, key=lambda c: c.id)
+        return sorted(_payload_chunks(points), key=lambda c: c.id)
+
+    def chunks(self, batch: int = 1000) -> Iterator[Chunk]:
+        offset: qm.ExtendedPointId | None = None
+        while True:
+            points, offset = self._client.scroll(COLLECTION, limit=batch, offset=offset)
+            yield from _payload_chunks(points)
+            if offset is None:
+                return
 
 
 def migrate(source: ChromaStore, target: QdrantStore, batch: int = 256) -> int:

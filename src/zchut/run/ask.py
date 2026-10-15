@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
 from zchut.answer.citations import render, resolve
@@ -8,6 +9,7 @@ from zchut.answer.prompt import build_prompt
 from zchut.answer.refusal import REFUSAL_SENTENCE, should_refuse
 from zchut.answer.render import clean_answer
 from zchut.index.embedder import Embedder
+from zchut.index.keyword import FUSION_POOL, KeywordIndex, fuse
 from zchut.index.store import VectorStore
 from zchut.run.cost_guard import CostGuard, Outcome, guarded
 from zchut.run.records import question_hash
@@ -21,11 +23,19 @@ class AskDeps:
     model: AnswerModel
     k: int
     min_score: float
+    keyword: KeywordIndex | None = None
+
+
+def search(question: str, vector: Sequence[float], deps: AskDeps) -> list[Hit]:
+    if deps.keyword is None:
+        return deps.store.search(vector, deps.k)
+    pool = deps.store.search(vector, max(FUSION_POOL, deps.k))
+    return fuse(pool, deps.keyword.search(question, FUSION_POOL), deps.k)
 
 
 def retrieve(question: str, deps: AskDeps, guard: CostGuard) -> list[Hit]:
     [vector] = guard.embed(deps.embedder, [question], "query")
-    return deps.store.search(vector, deps.k)
+    return search(question, vector, deps)
 
 
 def respond(question: str, hits: list[Hit], deps: AskDeps, guard: CostGuard) -> Answer:

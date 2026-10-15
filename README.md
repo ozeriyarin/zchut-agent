@@ -6,13 +6,14 @@ answer carries numbered citations `[1]`, `[2]` that link to the source pages and
 dates; when retrieval is too weak to ground an answer it says so in one fixed sentence instead of
 guessing. Every AI call is recorded (model, tokens, cost, latency) under `runs/`.
 
-**Status: v5 shipped** (read-only MCP server over the index and a weekly re-ingest routine; see
-"MCP server" and "Weekly re-ingest routine").
+**Status: v5b shipped** (hybrid retrieval: BM25 fused with vector search; see "Hybrid
+retrieval").
 Specs: `agent-os/specs/2026-10-13-zchut-v1-ingest-ask/spec.md`,
 `agent-os/specs/2026-10-13-zchut-v2-conversation/spec.md`,
 `agent-os/specs/2026-10-13-zchut-v3-full-corpus/spec.md`,
 `agent-os/specs/2026-10-13-zchut-v4-telegram/spec.md`,
-`agent-os/specs/2026-10-15-zchut-v5-mcp-and-reingest/spec.md`.
+`agent-os/specs/2026-10-15-zchut-v5-mcp-and-reingest/spec.md`,
+`agent-os/specs/2026-10-15-zchut-v5b-hybrid-retrieval/spec.md`.
 
 The project is spec-driven (Agent OS v3): product docs in `agent-os/product/`, coding standards in
 `agent-os/standards/`, one spec per version in `agent-os/specs/`. Every acceptance criterion has a
@@ -241,6 +242,48 @@ The table also has `markdown free` (share of drafts that needed no Markdown clea
 `eval/verifier_labels.json` (`{"version": 1, "labels": {"q04": {"label": "supported", "reason":
 "..."}}}`); it reads `—` while no labels exist. The questions to label are listed in
 `eval/review/2026-10-13-verifier-disagreements.md`.
+
+## Hybrid retrieval
+
+General questions should find general pages, so retrieval fuses a keyword ranking with the vector
+ranking (spec `agent-os/specs/2026-10-15-zchut-v5b-hybrid-retrieval/spec.md`). The keyword side is
+BM25 (`rank-bm25`) over each chunk's text plus its title path, which counts twice. The tokenizer
+splits on anything that is not a letter or a digit, keeps numbers, and strips the prefixes
+ו/ה/ב/ל/מ/ש/כ while at least three letters remain, so "ובפנסיה" and "פנסיה" match. The index is
+built from the store's chunks and cached in `data/keyword-index.pkl`, keyed by the chunk count and
+the manifest's newest `fetched_at`; a crawl that changes either rebuilds it on the next start.
+
+Reciprocal rank fusion (`k = 60`) merges the top 50 of each ranking. Every fused hit keeps its
+vector score, and refusal still uses the best vector score, so `retrieval.min_score` keeps its
+calibration (the best vector hit always stays in the list; a keyword-only hit carries the lowest
+vector score of the pool). `retrieval.mode` in `config/zchut.json` is `hybrid` or `vector` (the v1
+order, unchanged); `zchut eval --retrieval-only --mode vector|hybrid` and
+`zchut eval --conversations --mode ...` override it for one run.
+
+| run | mode | hit@3 | refusal rate | conversation turns |
+| --- | --- | --- | --- | --- |
+| dry run (fixture index, fake embedder) | vector | 0.63 | 0.13 (expected 0.10) | 1.00 (13/13) |
+| dry run (fixture index, fake embedder) | hybrid | 0.63 | 0.13 (expected 0.10) | 1.00 (13/13) |
+| full corpus (owner's run) | vector | 0.85 | to fill | to fill |
+| full corpus (owner's run) | hybrid | to fill | to fill | to fill |
+
+The dry run only proves the pipeline: three fixture pages, so both modes find the same pages, in a
+different order on 27 of 30 questions. The adoption check is the full-corpus row: hit@3 must not
+drop and the four pension misses must improve, otherwise set `retrieval.mode` back to `vector`.
+
+Measured on the full corpus (62,904 chunks, Qdrant, 30 questions, retrieval only, 2026-10-15):
+
+| mode | hit@3 | refusal rate | note |
+| --- | --- | --- | --- |
+| vector | 0.85 | 0.13 | default |
+| hybrid (RRF, BM25 may inject) | 0.59 | 0.13 | rejected |
+| hybrid (BM25 reorders the vector top-50 only) | 0.67 | 0.13 | rejected |
+
+Conclusion: with this tokenizer, BM25 over 63k Hebrew chunks promotes long chunks that repeat the
+question's words over the right short section, and the four pension misses did not improve. The
+code stays behind `retrieval.mode` for later work on the tokenizer (stemming, stop words) or a
+cross-encoder reranker; the default remains `vector`.
+
 
 ## Prompt rules
 

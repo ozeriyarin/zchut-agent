@@ -62,6 +62,7 @@ from zchut.graph.verify import (
 from zchut.index.crawl import CrawlDeps, estimate, format_plan, format_run, make_plan, run_crawl
 from zchut.index.embedder import FAKE_EMBED_MODEL, Embedder, FakeEmbedder, VoyageEmbedder
 from zchut.index.ingest import ingest as ingest_pages
+from zchut.index.keyword import KeywordIndex, load_keyword_index
 from zchut.index.manifest import ManifestError, load_manifest
 from zchut.index.store import (
     ChromaStore,
@@ -109,6 +110,14 @@ VerifierOpt = Annotated[
     str, typer.Option("--verifier", click_type=click.Choice(VERIFIERS), help="Verifier tier.")
 ]
 NoVerify = Annotated[bool, typer.Option("--no-verify", help="Skip the verify step.")]
+ModeOpt = Annotated[
+    str | None,
+    typer.Option(
+        "--mode",
+        click_type=click.Choice(["vector", "hybrid"]),
+        help="Retrieval mode (default from config).",
+    ),
+]
 
 
 @dataclass(frozen=True)
@@ -246,13 +255,22 @@ def _store(ctx: Context, embedder: Embedder) -> VectorStore:
     return store
 
 
-def _deps(ctx: Context, k: int | None) -> AskDeps:
+def _keyword(ctx: Context, store: VectorStore) -> KeywordIndex:
+    if ctx.dry_run:
+        return KeywordIndex(store.chunks())
+    paths = ctx.settings.paths
+    return load_keyword_index(store, load_manifest(paths.manifest), paths.keyword_index)
+
+
+def _deps(ctx: Context, k: int | None, mode: str | None = None) -> AskDeps:
     embedder = _embedder(ctx)
     retrieval = ctx.settings.retrieval
+    store = _store(ctx, embedder)
+    keyword = _keyword(ctx, store) if (mode or retrieval.mode) == "hybrid" else None
     # The answer model is set per tier in _graph_deps; retrieval-only evals never call it.
     model = FakeAnswerModel()
     threshold = retrieval.dry_run_min_score if ctx.dry_run else retrieval.min_score
-    return AskDeps(embedder, _store(ctx, embedder), model, k or retrieval.k, threshold)
+    return AskDeps(embedder, store, model, k or retrieval.k, threshold, keyword)
 
 
 def _graph_deps(ctx: Context, ask: AskDeps, tier: str, verifier: str | None) -> GraphDeps:
@@ -414,18 +432,19 @@ def eval_(
     conversations: Annotated[
         bool, typer.Option("--conversations", help="Score the multi-turn conversations instead.")
     ] = False,
+    mode: ModeOpt = None,
     dry_run: DryRun = False,
     max_usd: MaxUsd = None,
 ) -> None:
     """Score the 30-question set per tier and verifier, with a side-by-side table."""
     if conversations:
         check = None if no_verify else parse_choices(verifiers, VERIFIERS)[0]
-        _eval_conversations(tier, check, dry_run, max_usd)
+        _eval_conversations(tier, check, mode, dry_run, max_usd)
     with _config_errors():
         ctx = _context("eval", dry_run, max_usd)
         questions = load_questions(ctx.settings.paths.questions)
         labels = load_labels(ctx.settings.paths.verifier_labels)
-        deps = _deps(ctx, None)
+        deps = _deps(ctx, None, mode)
         names = parse_choices(tiers, TIERS) if tiers else [tier]
         checks: list[str | None] = [None] if no_verify else [*parse_choices(verifiers, VERIFIERS)]
         combos = (
@@ -446,11 +465,11 @@ def eval_(
 
 
 def _eval_conversations(
-    tier: str, verifier: str | None, dry_run: bool, max_usd: float | None
+    tier: str, verifier: str | None, mode: str | None, dry_run: bool, max_usd: float | None
 ) -> None:
     with _config_errors():
         ctx = _context("eval", dry_run, max_usd)
-        deps = _graph_deps(ctx, _deps(ctx, None), tier, verifier)
+        deps = _graph_deps(ctx, _deps(ctx, None, mode), tier, verifier)
         found = load_conversations(ctx.settings.paths.conversations, deps.clarifications)
     outcome, reports = run_conversations(found, deps, ctx.guard)
     path = _finish(ctx, outcome, [])

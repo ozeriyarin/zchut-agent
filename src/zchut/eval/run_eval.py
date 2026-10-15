@@ -12,7 +12,7 @@ from zchut.eval.labels import VerifierLabel, verifier_accuracy
 from zchut.eval.metrics import citation_precision, hit_at_k, rate
 from zchut.eval.questions import EvalQuestion
 from zchut.graph.build import GraphDeps, converse
-from zchut.run.ask import AskDeps
+from zchut.run.ask import AskDeps, search
 from zchut.run.cost_guard import CostGuard, Outcome, guarded
 from zchut.types import Hit
 
@@ -220,7 +220,7 @@ def run_eval(
 
     def action() -> str:
         vectors = guard.embed(deps.embedder, [q.question for q in questions], "query")
-        found = [(q, deps.store.search(v, deps.k)) for q, v in zip(questions, vectors, strict=True)]
+        found = [(q, search(q.question, v, deps)) for q, v in zip(questions, vectors, strict=True)]
         if not combos:
             rows = [_row(q, hits, should_refuse(hits, deps.min_score)) for q, hits in found]
             reports.append(build_report(rows))

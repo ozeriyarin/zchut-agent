@@ -26,6 +26,7 @@ dependencies = [
   "qdrant-client>=1.12,<2",
   "google-cloud-firestore>=2.16,<3",
   "mcp>=1.10,<2",
+  "rank-bm25>=0.2,<1",
 ]
 
 [project.optional-dependencies]
@@ -63,3 +64,8 @@ python_version = "3.11"
 strict = true
 packages = ["zchut"]
 mypy_path = "src"
+
+[[tool.mypy.overrides]]
+# rank-bm25 ships no type stubs or py.typed marker.
+module = ["rank_bm25"]
+ignore_missing_imports = true
