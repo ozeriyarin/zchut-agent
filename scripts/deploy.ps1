@@ -9,6 +9,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# gcloud prints progress and NOT_FOUND to stderr; only exit codes decide failure here.
+$PSNativeCommandUseErrorActionPreference = $false
 
 $DotenvPath = Join-Path (Split-Path -Parent $PSScriptRoot) ".env"
 $ConfigNames = @("GOOGLE_CLOUD_PROJECT", "QDRANT_URL", "TELEGRAM_ALLOWED_CHAT_IDS", "GOOGLE_CLOUD_REGION")
@@ -64,7 +66,7 @@ function Set-Secret([string]$Name, [string]$Value) {
     $tmp = New-TemporaryFile
     try {
         [IO.File]::WriteAllText($tmp, $Value)
-        & gcloud secrets describe $Name --project $Project *> $null
+        & gcloud secrets describe $Name --project $Project 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {
             Invoke-Gcloud secrets create $Name --project $Project --replication-policy automatic
         }
