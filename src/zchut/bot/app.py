@@ -14,13 +14,12 @@ from starlette.concurrency import run_in_threadpool
 
 from zchut.answer.citations import ATTRIBUTION_LINE
 from zchut.answer.render import render_html
-from zchut.bot.sessions import Session, SessionStore
+from zchut.bot.sessions import SessionStore
 from zchut.bot.telegram import SECRET_HEADER, Message, TelegramClient, Update
 from zchut.config import BotSettings, Prices
-from zchut.graph.build import GraphDeps, converse
-from zchut.graph.state import HISTORY_CAP, ConversationState
-from zchut.run.converse import record_state
-from zchut.run.cost_guard import CostGuard, guarded
+from zchut.graph.build import GraphDeps
+from zchut.run.converse import run_turn
+from zchut.run.cost_guard import CostGuard
 from zchut.run.records import RunRecorder, RunRecordSink
 
 HELP_TEXT = "\n".join(
@@ -78,36 +77,20 @@ def _answer(deps: BotDeps, chat_id: int, text: str, recorder: RunRecorder, said:
         record.bot_event = "budget"
         return BUDGET_LINE
     session = deps.sessions.load(chat_id)
-    pending = session.pending_clarification
-    question, history = (pending, [*session.history, text]) if pending else (text, session.history)
-    said += [question, *history]
+    said += [*session.history, *filter(None, [session.pending_clarification])]
     guard = CostGuard(deps.settings.max_usd_per_message, deps.prices, recorder)
-    states: list[ConversationState] = []
-
-    def action() -> str:
-        state = converse(
-            deps.graph, guard, question, history, None, pause=not pending, resumed=bool(pending)
-        )
-        record_state(record, deps.graph, state)
-        states.append(state)
-        return ""
-
-    if guarded(recorder, action).exit_code != 0:
+    outcome, state, after = run_turn(text, session, deps.graph, guard)
+    if state is None:
         record.bot_event = "error"
         return ERROR_LINE
-    [state] = states
-    if state.final is None:
-        deps.sessions.save(
-            chat_id, Session(history=session.history, pending_clarification=question)
-        )
-        record.bot_event = "clarify"
-        return escape(state.missing_fact or "", quote=False)
-    turn = [question, text] if pending else [question]
-    deps.sessions.save(chat_id, Session(history=[*session.history, *turn][-HISTORY_CAP:]))
-    record.bot_event = "answer"
+    said.append(state.standalone)
+    deps.sessions.save(chat_id, after)
+    record.bot_event = (
+        "clarify" if state.final is None else "nudge" if "nudge" in state.path else "answer"
+    )
     if state.draft is not None and "final" in state.path:
         return render_html(state.draft)
-    return escape(state.final, quote=False)
+    return escape(outcome.output, quote=False)
 
 
 def handle(deps: BotDeps, message: Message) -> None:

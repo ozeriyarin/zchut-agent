@@ -39,13 +39,16 @@ from zchut.config import (
     load_secrets,
     load_settings,
 )
+from zchut.eval.conversations import load_conversations, run_conversations
 from zchut.eval.labels import load_labels
 from zchut.eval.questions import load_questions
 from zchut.eval.run_eval import format_table, run_eval
 from zchut.graph.build import GraphDeps, Reply
+from zchut.graph.clarifications import Clarifications, load_clarifications
 from zchut.graph.classify import FAKE_CLASSIFIER_MODEL, Classifier, FakeClassifier, HaikuClassifier
+from zchut.graph.condense import FAKE_CONDENSER_MODEL, Condenser, FakeCondenser, HaikuCondenser
 from zchut.graph.offices import load_offices
-from zchut.graph.state import HISTORY_CAP
+from zchut.graph.state import Session
 from zchut.graph.verify import (
     FAKE_VERIFIER_MODEL,
     FakeVerifier,
@@ -66,7 +69,7 @@ from zchut.index.store import (
     migrate,
 )
 from zchut.run.ask import AskDeps
-from zchut.run.converse import run_conversation
+from zchut.run.converse import run_conversation, run_turn
 from zchut.run.cost_guard import CostGuard, Outcome, guarded
 from zchut.run.cost_report import format_cost, summarize_runs
 from zchut.run.records import FirestoreRunSink, LocalRunSink, RunRecorder, RunRecordSink
@@ -119,7 +122,13 @@ def _context(command: str, dry_run: bool, max_usd: float | None) -> Context:
     settings = load_settings(root)
     prices = load_prices(root)
     if dry_run:
-        fakes = [FAKE_EMBED_MODEL, FAKE_ANSWER_MODEL, FAKE_CLASSIFIER_MODEL, FAKE_VERIFIER_MODEL]
+        fakes = [
+            FAKE_EMBED_MODEL,
+            FAKE_ANSWER_MODEL,
+            FAKE_CLASSIFIER_MODEL,
+            FAKE_CONDENSER_MODEL,
+            FAKE_VERIFIER_MODEL,
+        ]
         prices = prices.with_free(fakes)
     cap = settings.max_usd if max_usd is None else max_usd
     recorder = RunRecorder(command, dry_run, cap)
@@ -146,11 +155,18 @@ def _haiku(ctx: Context) -> anthropic.Anthropic:
     return make_haiku_client(ctx.secrets.require_anthropic(), ctx.settings.answer.timeout_s)
 
 
-def _classifier(ctx: Context) -> Classifier:
+def _classifier(ctx: Context, clarifications: Clarifications) -> Classifier:
     max_tokens = ctx.settings.graph.classify_max_tokens
     if ctx.dry_run:
         return FakeClassifier(max_tokens)
-    return HaikuClassifier(_haiku(ctx), ctx.settings.models.answer, max_tokens)
+    return HaikuClassifier(_haiku(ctx), ctx.settings.models.answer, max_tokens, clarifications)
+
+
+def _condenser(ctx: Context) -> Condenser:
+    max_tokens = ctx.settings.graph.condense_max_tokens
+    if ctx.dry_run:
+        return FakeCondenser(max_tokens)
+    return HaikuCondenser(_haiku(ctx), ctx.settings.models.answer, max_tokens)
 
 
 def _verifier(ctx: Context, tier: str | None) -> Verifier | None:
@@ -232,11 +248,14 @@ def _deps(ctx: Context, k: int | None) -> AskDeps:
 
 
 def _graph_deps(ctx: Context, ask: AskDeps, tier: str, verifier: str | None) -> GraphDeps:
+    clarifications = load_clarifications(ctx.settings.paths.clarifications)
     return GraphDeps(
         replace(ask, model=_answer_model(ctx, tier)),
-        _classifier(ctx),
+        _classifier(ctx, clarifications),
+        _condenser(ctx),
         _verifier(ctx, verifier),
         load_offices(ctx.settings.paths.offices),
+        clarifications,
         ask.k * ctx.settings.chunk.max_chars,
         tier,
     )
@@ -358,16 +377,17 @@ def chat(
     dry_run: DryRun = False,
     max_usd: MaxUsd = None,
 ) -> None:
-    """Ask several questions in one session; an empty line ends it."""
+    """Talk in one session like the bot: follow-ups and clarification replies; empty line ends."""
     with _config_errors():
         ctx = _context("chat", dry_run, max_usd)
         deps = _graph_deps(ctx, _deps(ctx, k), tier, None if no_verify else verifier)
-    history: list[str] = []
-    while question := typer.prompt("שאלה", default="", show_default=False).strip():
-        turn, said = _turn(ctx), [question]
-        outcome = run_conversation(question, history, deps, turn.guard, _reply(said))
-        _finish(turn, outcome, [*history, *said])
-        history = [*history, *said][-HISTORY_CAP:]
+    session = Session()
+    while text := typer.prompt("שאלה", default="", show_default=False).strip():
+        turn = _turn(ctx)
+        outcome, state, after = run_turn(text, session, deps, turn.guard)
+        said = [session.pending_clarification, text, state.standalone if state else None]
+        _finish(turn, outcome, [*session.history, *filter(None, said)])
+        session = after
 
 
 @app.command("eval")
@@ -383,10 +403,16 @@ def eval_(
         str, typer.Option("--verifiers", help="Comma-separated verifier tiers to compare.")
     ] = "haiku",
     no_verify: NoVerify = False,
+    conversations: Annotated[
+        bool, typer.Option("--conversations", help="Score the multi-turn conversations instead.")
+    ] = False,
     dry_run: DryRun = False,
     max_usd: MaxUsd = None,
 ) -> None:
     """Score the 30-question set per tier and verifier, with a side-by-side table."""
+    if conversations:
+        check = None if no_verify else parse_choices(verifiers, VERIFIERS)[0]
+        _eval_conversations(tier, check, dry_run, max_usd)
     with _config_errors():
         ctx = _context("eval", dry_run, max_usd)
         questions = load_questions(ctx.settings.paths.questions)
@@ -408,6 +434,22 @@ def eval_(
         table_path = path.with_name(f"{path.stem}-comparison.md")
         table_path.write_text(format_table(reports) + "\n", encoding="utf-8")
         typer.echo(f"טבלת השוואה: {table_path}")
+    raise typer.Exit(outcome.exit_code)
+
+
+def _eval_conversations(
+    tier: str, verifier: str | None, dry_run: bool, max_usd: float | None
+) -> None:
+    with _config_errors():
+        ctx = _context("eval", dry_run, max_usd)
+        deps = _graph_deps(ctx, _deps(ctx, None), tier, verifier)
+        found = load_conversations(ctx.settings.paths.conversations, deps.clarifications)
+    outcome, reports = run_conversations(found, deps, ctx.guard)
+    path = _finish(ctx, outcome, [])
+    for report in reports:
+        report_path = path.with_name(f"{path.stem}-conversations-report.json")
+        report_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        typer.echo(f"דוח הערכה: {report_path}")
     raise typer.Exit(outcome.exit_code)
 
 

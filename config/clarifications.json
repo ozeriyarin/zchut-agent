@@ -1,0 +1,17 @@
+[
+  {
+    "key": "employment_status",
+    "question_he": "האם עבדת כשכיר/ה או כעצמאי/ת?",
+    "applies_to_topics": ["unemployment"]
+  },
+  {
+    "key": "months_worked",
+    "question_he": "כמה חודשים עבדת ב-18 החודשים האחרונים?",
+    "applies_to_topics": ["unemployment"]
+  },
+  {
+    "key": "monthly_salary",
+    "question_he": "מה היה השכר החודשי הממוצע שלך?",
+    "applies_to_topics": ["unemployment", "pension"]
+  }
+]

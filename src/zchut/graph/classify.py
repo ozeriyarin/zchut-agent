@@ -7,6 +7,7 @@ import anthropic
 from pydantic import ValidationError
 
 from zchut.answer.model import AnswerError, haiku_json
+from zchut.graph.clarifications import Clarifications
 from zchut.graph.state import Classification, Topic
 from zchut.run.cost_guard import CostGuard
 from zchut.tokens import estimate_tokens
@@ -18,25 +19,41 @@ CLASSIFY_SYSTEM = (
     "topic: unemployment לדמי אבטלה ולשירות התעסוקה, pension לפנסיה ולחיסכון, "
     "tax למס הכנסה ולהחזרי מס, other לכל נושא אחר. "
     "in_scope: true רק כשהשאלה עוסקת בזכויות מול ביטוח לאומי, שירות התעסוקה, פנסיה או מס. "
-    "missing_fact: שאלת הבהרה אחת קצרה בעברית, רק כשאי אפשר לענות בלי עובדה שהמשתמש יודע "
-    "(למשל שכיר או עצמאי, טווח גיל); אחרת null."
+    "office_lookup: true רק כשהשאלה מבקשת איפה נמצא משרד או איך יוצרים איתו קשר. "
+    "missing_fact: מפתח אחד מהרשימה שלמטה, רק כשהשאלה היא על סכום או על משך תקופה, "
+    "התשובה משתנה לפי העובדה, והנושא מופיע בנושאים של המפתח; אחרת null. "
+    "אל תבקש הבהרה לעולם על שאלות זכאות (מי זכאי), איך עושים, איפה, או אילו מסמכים צריך."
 )
-CLASSIFY_SCHEMA: dict[str, object] = {
-    "type": "object",
-    "properties": {
-        "topic": {"type": "string", "enum": list(get_args(Topic))},
-        "in_scope": {"type": "boolean"},
-        "missing_fact": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-    },
-    "required": ["topic", "in_scope", "missing_fact"],
-    "additionalProperties": False,
-}
-EMPLOYMENT_QUESTION = "האם עבדת כשכיר/ה או כעצמאי/ת?"
 _TOPIC_WORDS: list[tuple[Topic, re.Pattern[str]]] = [
     ("unemployment", re.compile(r"אבטלה|תעסוקה|פיטורי|התפטר")),
     ("pension", re.compile(r"פנסי|הפרש")),
     ("tax", re.compile(r"(?<!\w)[הלב]?מס(?!\w)|טופס 106")),
 ]
+_AMOUNT = re.compile(r"כמה.*(?:אקבל|מגיע)|גובה")
+_OFFICE = re.compile(r"(?:איפה|היכן).{0,20}(?:משרד|לשכ|סניף)|ליצור קשר|פרטי (?:ה)?קשר")
+
+
+def classify_system(clarifications: Clarifications) -> str:
+    keys = [
+        f"{c.key}: {c.question_he} (נושאים: {', '.join(c.applies_to_topics)})"
+        for c in clarifications.values()
+    ]
+    return "\n".join([CLASSIFY_SYSTEM, "מפתחות:", *keys])
+
+
+def classify_schema(clarifications: Clarifications) -> dict[str, object]:
+    fact = {"anyOf": [{"type": "string", "enum": list(clarifications)}, {"type": "null"}]}
+    return {
+        "type": "object",
+        "properties": {
+            "topic": {"type": "string", "enum": list(get_args(Topic))},
+            "in_scope": {"type": "boolean"},
+            "office_lookup": {"type": "boolean"},
+            "missing_fact": fact,
+        },
+        "required": ["topic", "in_scope", "office_lookup", "missing_fact"],
+        "additionalProperties": False,
+    }
 
 
 class Classifier(Protocol):
@@ -47,22 +64,30 @@ class Classifier(Protocol):
 
 
 class HaikuClassifier:
-    def __init__(self, client: anthropic.Anthropic, model: str, max_tokens: int) -> None:
+    def __init__(
+        self,
+        client: anthropic.Anthropic,
+        model: str,
+        max_tokens: int,
+        clarifications: Clarifications,
+    ) -> None:
         self.model = model
         self.max_tokens = max_tokens
         self._client = client
+        self._system = classify_system(clarifications)
+        self._schema = classify_schema(clarifications)
 
     def classify(self, text: str, guard: CostGuard) -> Classification:
         def send() -> tuple[Classification, Usage]:
             data, usage = haiku_json(
-                self._client, self.model, self.max_tokens, CLASSIFY_SYSTEM, text, CLASSIFY_SCHEMA
+                self._client, self.model, self.max_tokens, self._system, text, self._schema
             )
             try:
                 return Classification.model_validate(data), usage
             except ValidationError as exc:
                 raise AnswerError(f"{self.model} returned an invalid classification") from exc
 
-        return guard.call("classify", self.model, CLASSIFY_SYSTEM + text, self.max_tokens, send)
+        return guard.call("classify", self.model, self._system + text, self.max_tokens, send)
 
 
 class FakeClassifier:
@@ -78,8 +103,17 @@ class FakeClassifier:
         return guard.call("classify", self.model, text, self.max_tokens, send)
 
 
+def fake_topic(text: str) -> Topic:
+    return next((t for t, words in _TOPIC_WORDS if words.search(text)), "other")
+
+
 def fake_classification(text: str) -> Classification:
-    topic: Topic = next((t for t, words in _TOPIC_WORDS if words.search(text)), "other")
-    amount = re.search(r"כמה אקבל|גובה", text) and not re.search(r"שכיר|עצמאי", text)
-    missing = EMPLOYMENT_QUESTION if topic == "unemployment" and amount else None
-    return Classification(topic=topic, in_scope=topic != "other", missing_fact=missing)
+    topic = fake_topic(text)
+    amount = _AMOUNT.search(text) and not re.search(r"שכיר|עצמאי", text)
+    missing = "employment_status" if topic == "unemployment" and amount else None
+    return Classification(
+        topic=topic,
+        in_scope=topic != "other",
+        missing_fact=missing,
+        office_lookup=bool(_OFFICE.search(text)),
+    )

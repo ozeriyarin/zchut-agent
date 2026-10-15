@@ -27,6 +27,7 @@
   "graph": {
     "classify_max_tokens": 200,
     "verify_max_tokens": 400,
+    "condense_max_tokens": 200,
     "jev": {
       "instructions": "Decide whether every claim in state.draft is supported by state.sources.",
       "criteria": {
@@ -58,6 +59,8 @@
     "fixtures_dir": "tests/fixtures/pages",
     "questions": "eval/questions.json",
     "offices": "config/offices.json",
+    "clarifications": "config/clarifications.json",
+    "conversations": "eval/conversations.json",
     "manifest": "data/manifest.json"
   }
 }

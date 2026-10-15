@@ -5,18 +5,14 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 from google.cloud.firestore import Client as FirestoreClient
-from pydantic import BaseModel
+
+from zchut.graph.state import Session
 
 Clock = Callable[[], datetime]
 
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
-
-
-class Session(BaseModel):
-    history: list[str] = []
-    pending_clarification: str | None = None
 
 
 class SessionStore(Protocol):

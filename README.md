@@ -156,10 +156,11 @@ START -> classify --missing fact (once)--> clarify   refuse -> END
 ```
 
 - `classify`: one Haiku call with a JSON schema: topic (`unemployment`, `pension`, `tax`,
-  `other`), in scope or not, and a missing fact as one Hebrew question.
-- `clarify`: a LangGraph interrupt. The CLI prints the question and reads the reply from stdin, or
-  takes it from `--reply`. The reply joins the history and `classify` runs once more; a second
-  missing fact does not interrupt again.
+  `other`), in scope or not, an office lookup flag, and a missing fact as a key from
+  `config/clarifications.json` (see Conversations; `condense` runs first when there is history).
+- `clarify`: a LangGraph interrupt with the key's fixed Hebrew question. The CLI prints it and reads
+  the reply from stdin, or takes it from `--reply`. `condense` folds the reply into the question and
+  `classify` runs once more; a second missing fact does not interrupt again.
 - `retrieve` and `answer` are the v1 steps on the chosen tier; the v1 refusal stays the first gate.
 - `verify`: a second model call checks the draft against the retrieved chunks. When it fails,
   `escalate` replaces the draft with the office for the topic and the claims it could not verify.
@@ -186,6 +187,30 @@ Escalation offices live in `config/offices.json` (topic -> name, what they handl
 URLs to be verified by the owner: they are the public home pages of the Israeli Employment
 Service, the Capital Market, Insurance and Savings Authority, the Israel Tax Authority and
 Bituach Leumi.
+
+## Conversations
+
+Follow-ups are resolved before anything is searched (spec
+`agent-os/specs/2026-10-15-zchut-v4b-conversation-quality/spec.md`). When the session has earlier
+turns or a pending clarification, a `condense` node (one Haiku call with a JSON schema, about 300
+input tokens) rewrites the latest message into `{ standalone_question, is_reply_to_clarification,
+is_question }`: pronouns and ellipsis resolve against the earlier questions ("איפה המשרד שלהם"
+after an unemployment question names שירות התעסוקה), a reply to the bot's clarification is folded
+into the pending question, and a message that already stands alone is kept as is. The standalone
+question drives `classify`, `retrieve` (threshold unchanged), `answer` and `verify`; the record
+keeps only its hash. A reaction that is not a question ("מה קשור?") gets one fixed line,
+"לא בטוח שהבנתי שאלה. על מה לבדוק עבורך? למשל: דמי אבטלה, פנסיה, החזר מס.", with no search and no
+answer call (`bot_event: nudge`). Clarifications come only from `config/clarifications.json`
+(`employment_status`, `months_worked`, `monthly_salary`, each with the topics it applies to): the
+classifier returns a key or null, the user sees the fixed `question_he`, eligibility, how-to, where
+and which-documents questions never get one, and a session asks at most once (`clarified_once`).
+"Where is the office" questions with a known topic answer with the office entry from
+`config/offices.json` (`graph.office_lookup: true`, not an escalation). Citations are renumbered in
+order of first appearance and the sources block follows. `zchut chat` runs the same session flow
+as the bot; `zchut ask` stays single-turn. `zchut eval --conversations [--dry-run]` replays the
+five conversations in `eval/conversations.json` (paraphrased from the first live session, each
+turn expecting `answer`, `clarify:<key>`, `nudge`, `office` or `refuse`, optional
+`expected_urls`) and prints turn accuracy; the dry run scores 1.00 (11/11) and runs in the suite.
 
 ## Eval
 
@@ -242,9 +267,9 @@ and `scripts/deploy.ps1` (the owner runs them).
 - `/start` and `/help` reply with a fixed Hebrew text (topics, sources, CC BY-SA line, "information,
   not legal advice") and make no model call. Chats outside `TELEGRAM_ALLOWED_CHAT_IDS` (empty =
   everyone) get one refusal line; the record counts them as `bot_event: denied`.
-- A clarification is stored in the session (`pending_clarification`); the next message is taken as
-  the reply and the graph continues from there. Sessions (`sessions/<chat_id>`: last 6 turns, the
-  pending question, `updated_at`, `expires_at`) expire 30 minutes after the last message through a
+- A clarification is stored in the session (`pending_clarification`, `pending_fact`); the next
+  message goes through `condense` (see Conversations). Sessions (`sessions/<chat_id>`: last 6
+  standalone questions, the pending question, `clarified_once`, `updated_at`, `expires_at`) expire 30 minutes after the last message through a
   Firestore TTL policy, and an expired session is never read back.
 - Budget: `bot.max_usd_per_message` (0.08) per message and `bot.max_usd_per_day` (1.00) summed
   from today's records; over the daily cap the bot replies "התקציב של היום נוצל" with no embed or

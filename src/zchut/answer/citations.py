@@ -16,7 +16,7 @@ KOLZCHUT_LICENSE = "CC-BY-SA-3.0"
 
 def resolve(text: str, hits: Sequence[Hit]) -> Answer:
     valid = range(1, len(hits) + 1)
-    order: list[int] = []
+    display: dict[int, int] = {}
     dropped = 0
 
     def keep(match: re.Match[str]) -> str:
@@ -24,13 +24,20 @@ def resolve(text: str, hits: Sequence[Hit]) -> Answer:
         numbers = [int(n) for n in re.split(r"\s*,\s*", match.group(1))]
         kept = [n for n in numbers if n in valid]
         dropped += len(numbers) - len(kept)
-        order.extend(n for n in kept if n not in order)
-        return f"[{', '.join(str(n) for n in kept)}]" if kept else ""
+        for n in kept:
+            display.setdefault(n, len(display) + 1)
+        return f"[{', '.join(str(display[n]) for n in kept)}]" if kept else ""
 
     cleaned = _GROUP.sub(keep, text)
     cleaned = re.sub(r"[ \t]+([.,:;!?])", r"\1", re.sub(r"[ \t]{2,}", " ", cleaned)).strip()
-    citations = tuple(Citation(number=n, chunk=hits[n - 1].chunk) for n in order)
+    citations = tuple(Citation(number=d, chunk=hits[n - 1].chunk) for n, d in display.items())
     return Answer(text=cleaned, citations=citations, dropped_citations=dropped)
+
+
+def display_hits(answer: Answer, hits: Sequence[Hit]) -> list[Hit]:
+    # Cited chunks first in display order, so the verifier's numbers match the renumbered draft.
+    shown = {c.chunk.id: c.number for c in answer.citations}
+    return sorted(hits, key=lambda h: shown.get(h.chunk.id, len(hits) + 1))
 
 
 def source_groups(citations: Sequence[Citation]) -> list[tuple[str, Chunk]]:

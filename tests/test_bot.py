@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
-from conftest import make_graph_deps, make_guard
+from conftest import EMPLOYMENT_QUESTION, make_graph_deps, make_guard
 from zchut import cli
 from zchut.answer.model import FakeAnswerModel
 from zchut.answer.render import render_html
@@ -36,7 +36,6 @@ from zchut.bot.telegram import (
 from zchut.cli import app
 from zchut.config import BotSettings, Prices
 from zchut.graph.build import converse
-from zchut.graph.classify import EMPLOYMENT_QUESTION
 from zchut.graph.verify import FakeVerifier
 from zchut.index.store import InMemoryVectorStore
 from zchut.run.records import REDACTED, FirestoreRunSink
@@ -199,7 +198,7 @@ def test_criterion_2_clarification_is_kept_in_the_session_and_resumed(
     assert bot.model.calls == 1
     session = bot.session()
     assert session["pending_clarification"] is None
-    assert session["history"] == [AMOUNT, "שכיר"]
+    assert session["history"] == [f"{AMOUNT} (שכיר)"]
     first, second = (r["graph"] for r in bot.runs())
     assert first["path"] == ["classify"] and not first["clarified"]
     assert second["clarified"] and second["path"][-1] == "final"

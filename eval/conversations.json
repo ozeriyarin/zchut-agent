@@ -1,0 +1,62 @@
+[
+  {
+    "id": "c1-eligibility",
+    "turns": [
+      {
+        "message": "מי זכאי לקבל דמי אבטלה?",
+        "expect": "answer",
+        "expected_urls": ["https://www.kolzchut.org.il/he/דמי_אבטלה"]
+      }
+    ]
+  },
+  {
+    "id": "c2-register",
+    "turns": [
+      {
+        "message": "איך נרשמים כדורש עבודה בשירות התעסוקה?",
+        "expect": "answer",
+        "expected_urls": ["https://www.kolzchut.org.il/he/דמי_אבטלה"]
+      }
+    ]
+  },
+  {
+    "id": "c3-amount-clarified",
+    "turns": [
+      {"message": "כמה מגיע לי בדמי אבטלה?", "expect": "clarify:employment_status"},
+      {
+        "message": "שכיר",
+        "expect": "answer",
+        "expected_urls": ["https://www.kolzchut.org.il/he/דמי_אבטלה"]
+      }
+    ]
+  },
+  {
+    "id": "c4-amount-derailed",
+    "turns": [
+      {"message": "כמה דמי אבטלה אקבל?", "expect": "clarify:employment_status"},
+      {"message": "ההעפלה?", "expect": "nudge"},
+      {
+        "message": "עבדתי במשך כל השנה",
+        "expect": "answer",
+        "expected_urls": ["https://www.kolzchut.org.il/he/דמי_אבטלה"]
+      },
+      {
+        "message": "פיטרו אותי החודש והשכר שלי היה בערך 15 אלף",
+        "expect": "answer",
+        "expected_urls": ["https://www.kolzchut.org.il/he/דמי_אבטלה"]
+      }
+    ]
+  },
+  {
+    "id": "c5-office",
+    "turns": [
+      {
+        "message": "מי זכאי לדמי אבטלה?",
+        "expect": "answer",
+        "expected_urls": ["https://www.kolzchut.org.il/he/דמי_אבטלה"]
+      },
+      {"message": "אוקיי, איפה נמצא המשרד שלהם?", "expect": "office"},
+      {"message": "מה קשור?", "expect": "nudge"}
+    ]
+  }
+]

@@ -15,6 +15,14 @@ class Classification(BaseModel):
     topic: Topic
     in_scope: bool
     missing_fact: str | None = None
+    office_lookup: bool = False
+
+
+class Session(BaseModel):
+    history: list[str] = []
+    pending_clarification: str | None = None
+    pending_fact: str | None = None
+    clarified_once: bool = False
 
 
 class Verdict(BaseModel):
@@ -25,9 +33,14 @@ class Verdict(BaseModel):
 class ConversationState(BaseModel):
     question: str
     history: list[str] = []
+    pending_clarification: str | None = None
+    pending_fact: str | None = None
+    standalone_question: str | None = None
+    is_question: bool = True
     topic: Topic | None = None
     in_scope: bool | None = None
     missing_fact: str | None = None
+    office_lookup: bool = False
     clarified: bool = False
     can_clarify: bool = True
     hits: list[Hit] = []
@@ -42,8 +55,6 @@ class ConversationState(BaseModel):
     def verified(self) -> bool | None:
         return None if self.verdict is None else self.verdict.supported
 
-    def query(self) -> str:
-        return f"{self.question} {self.history[-1]}" if self.clarified else self.question
-
-    def conversation(self) -> str:
-        return "\n".join([*self.history, self.question])
+    @property
+    def standalone(self) -> str:
+        return self.standalone_question or self.question

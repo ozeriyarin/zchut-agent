@@ -6,7 +6,7 @@ import anthropic
 import httpx
 import pytest
 
-from conftest import make_graph_deps, make_guard
+from conftest import CLARIFICATIONS, make_graph_deps, make_guard
 from zchut.answer.model import AnswerError
 from zchut.answer.prompt import build_prompt
 from zchut.answer.tiers import (
@@ -18,7 +18,8 @@ from zchut.answer.tiers import (
 )
 from zchut.config import ConfigError, Prices, Secrets, Settings
 from zchut.graph.build import converse
-from zchut.graph.classify import CLASSIFY_SCHEMA, HaikuClassifier
+from zchut.graph.clarifications import load_clarifications
+from zchut.graph.classify import HaikuClassifier, classify_schema
 from zchut.graph.verify import (
     OPENROUTER_DECISIONS_URL,
     VERIFY_SCHEMA,
@@ -152,12 +153,13 @@ def test_haiku_classifier_and_verifier_send_json_schemas(priced: Prices) -> None
     payload = {"topic": "tax", "in_scope": True, "missing_fact": None}
     client = anthropic_client([payload, {"supported": True, "unsupported_claims": []}], sent)
     guard = make_guard(priced)
-    result = HaikuClassifier(client, "claude-haiku-4-5", 200).classify("החזר מס?", guard)
+    facts = load_clarifications(CLARIFICATIONS)
+    result = HaikuClassifier(client, "claude-haiku-4-5", 200, facts).classify("החזר מס?", guard)
     assert (result.topic, result.in_scope, result.missing_fact) == ("tax", True, None)
     verdict = HaikuVerifier(client, "claude-haiku-4-5", 400).verify("א [1].", [], guard)
     assert verdict.supported is True
     assert [b["output_config"] for b in sent] == [
-        {"format": {"type": "json_schema", "schema": CLASSIFY_SCHEMA}},
+        {"format": {"type": "json_schema", "schema": classify_schema(facts)}},
         {"format": {"type": "json_schema", "schema": VERIFY_SCHEMA}},
     ]
     assert [c.role for c in guard.recorder.record.calls] == ["classify", "verify"]

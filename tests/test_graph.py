@@ -8,14 +8,14 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 from typer.testing import CliRunner
 
-from conftest import OFFICES, make_graph_deps, make_guard
+from conftest import EMPLOYMENT_QUESTION, OFFICES, make_graph_deps, make_guard
 from zchut.answer.citations import render
 from zchut.answer.model import FakeAnswerModel
 from zchut.answer.refusal import REFUSAL_SENTENCE
 from zchut.cli import app
 from zchut.config import ConfigError, Prices
 from zchut.graph.build import build_graph, converse
-from zchut.graph.classify import EMPLOYMENT_QUESTION, fake_classification
+from zchut.graph.classify import fake_classification
 from zchut.graph.offices import ESCALATION_HEAD, escalation_text, load_offices
 from zchut.graph.state import ConversationState
 from zchut.graph.verify import FakeVerifier, uncited_sentences
@@ -66,13 +66,15 @@ def test_criterion_2_one_clarification_then_best_reading(
     assert state.path == [
         "classify",
         "clarify",
+        "condense",
         "classify",
         "retrieve",
         "answer",
         "verify",
         "final",
     ]
-    assert state.clarified and state.history == ["שכיר"] and state.missing_fact is None
+    assert state.clarified and state.standalone == f"{AMOUNT} (שכיר)"
+    assert state.missing_fact is None
 
     asked: list[str] = []
 
@@ -82,8 +84,8 @@ def test_criterion_2_one_clarification_then_best_reading(
 
     state = converse(deps, make_guard(priced), AMOUNT, [], unhelpful)
     assert asked == [EMPLOYMENT_QUESTION]
-    assert state.missing_fact == EMPLOYMENT_QUESTION and state.path.count("clarify") == 1
-    assert state.path[:4] == ["classify", "clarify", "classify", "retrieve"]
+    assert state.missing_fact == "employment_status" and state.path.count("clarify") == 1
+    assert state.path[:5] == ["classify", "clarify", "condense", "classify", "retrieve"]
     assert state.final is not None
 
 
@@ -117,15 +119,28 @@ def test_criterion_6_record_holds_the_graph_and_no_user_text(
         assert said not in text
     record = json.loads(text)
     assert record["graph"] == {
-        "path": ["classify", "clarify", "classify", "retrieve", "answer", "verify", "final"],
+        "path": [
+            "condense",
+            "classify",
+            "clarify",
+            "condense",
+            "classify",
+            "retrieve",
+            "answer",
+            "verify",
+            "final",
+        ],
         "tier": "vllm",
         "verifier": "haiku",
         "verified": True,
         "escalated": False,
         "clarified": True,
+        "office_lookup": False,
     }
     assert [c["role"] for c in record["calls"]] == [
+        "condense",
         "classify",
+        "condense",
         "classify",
         "embed",
         "answer",
@@ -173,7 +188,7 @@ def test_whole_path_estimate_aborts_before_the_first_call(
     ("text", "topic", "in_scope", "missing"),
     [
         (ELIGIBLE, "unemployment", True, None),
-        (AMOUNT, "unemployment", True, EMPLOYMENT_QUESTION),
+        (AMOUNT, "unemployment", True, "employment_status"),
         (f"{AMOUNT}\nעצמאי", "unemployment", True, None),
         ("כמה המעסיק חייב להפריש לפנסיה?", "pension", True, None),
         ("תוך כמה זמן מתקבל החזר המס?", "tax", True, None),

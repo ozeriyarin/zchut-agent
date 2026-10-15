@@ -113,6 +113,7 @@ class GraphRecord(BaseModel):
     verified: bool | None
     escalated: bool
     clarified: bool
+    office_lookup: bool = False
 
 
 class CrawlRecord(BaseModel):

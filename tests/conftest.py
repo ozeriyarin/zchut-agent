@@ -11,7 +11,9 @@ from zchut import cli
 from zchut.answer.model import FAKE_ANSWER_MODEL, AnswerModel, FakeAnswerModel
 from zchut.config import ModelPrice, Prices, Settings, load_prices, load_settings
 from zchut.graph.build import GraphDeps
+from zchut.graph.clarifications import load_clarifications
 from zchut.graph.classify import FAKE_CLASSIFIER_MODEL, FakeClassifier
+from zchut.graph.condense import FAKE_CONDENSER_MODEL, FakeCondenser
 from zchut.graph.offices import load_offices
 from zchut.graph.verify import FAKE_VERIFIER_MODEL, Verifier
 from zchut.index.embedder import FAKE_EMBED_MODEL, FakeEmbedder
@@ -28,6 +30,8 @@ AVTALA = "https://www.kolzchut.org.il/he/דמי_אבטלה"
 PENSIA = "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים"
 TAX = "https://www.gov.il/he/service/income-tax-refund-for-employees"
 OFFICES = ROOT / "config" / "offices.json"
+CLARIFICATIONS = ROOT / "config" / "clarifications.json"
+EMPLOYMENT_QUESTION = load_clarifications(CLARIFICATIONS)["employment_status"].question_he
 
 
 @pytest.fixture
@@ -41,6 +45,7 @@ def priced() -> Prices:
         FAKE_EMBED_MODEL: ModelPrice(input=0.02),
         FAKE_ANSWER_MODEL: ModelPrice(input=1.0, output=5.0, cache_read=0.1, cache_write=1.25),
         FAKE_CLASSIFIER_MODEL: ModelPrice(input=1.0, output=5.0),
+        FAKE_CONDENSER_MODEL: ModelPrice(input=1.0, output=5.0),
         FAKE_VERIFIER_MODEL: ModelPrice(input=1.0, output=5.0),
     }
     return Prices(models={**load_prices(ROOT).models, **fakes})
@@ -79,7 +84,16 @@ def make_graph_deps(
     tier: str = "haiku",
 ) -> GraphDeps:
     ask = AskDeps(FakeEmbedder(), store, model, 5, min_score)
-    return GraphDeps(ask, FakeClassifier(), verifier, load_offices(OFFICES), 5 * 700, tier)
+    return GraphDeps(
+        ask,
+        FakeClassifier(),
+        FakeCondenser(),
+        verifier,
+        load_offices(OFFICES),
+        load_clarifications(CLARIFICATIONS),
+        5 * 700,
+        tier,
+    )
 
 
 @pytest.fixture

@@ -33,8 +33,12 @@ def load_offices(path: Path) -> dict[Topic, Office]:
     return offices
 
 
+def office_line(office: Office) -> str:
+    return f"כדאי לפנות ל{office.name} ({office.handles}): {office.contact_url}"
+
+
 def escalation_text(office: Office, claims: Sequence[str]) -> str:
-    lines = [ESCALATION_HEAD, f"כדאי לפנות ל{office.name} ({office.handles}): {office.contact_url}"]
+    lines = [ESCALATION_HEAD, office_line(office)]
     if claims:
         lines += ["לא הצלחתי לאמת:", *(f"- {c}" for c in claims)]
     return "\n".join(lines)

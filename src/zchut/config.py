@@ -72,6 +72,7 @@ class JevSettings(BaseModel):
 class GraphSettings(BaseModel):
     classify_max_tokens: int = Field(gt=0)
     verify_max_tokens: int = Field(gt=0)
+    condense_max_tokens: int = Field(default=200, gt=0)
     jev: JevSettings
 
 
@@ -82,6 +83,8 @@ class PathSettings(BaseModel):
     fixtures_dir: Path
     questions: Path
     offices: Path = Path("config/offices.json")
+    clarifications: Path = Path("config/clarifications.json")
+    conversations: Path = Path("eval/conversations.json")
     manifest: Path = Path("data/manifest.json")
     verifier_labels: Path = Path("eval/verifier_labels.json")
 
