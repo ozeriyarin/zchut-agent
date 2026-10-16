@@ -18,9 +18,12 @@ CLASSIFY_SYSTEM = (
     "אתה מסווג שאלות על זכויות ובירוקרטיה בישראל. החזר JSON בלבד לפי הסכמה. "
     "topic: unemployment לדמי אבטלה ולשירות התעסוקה, pension לפנסיה ולחיסכון, "
     "tax למס הכנסה ולהחזרי מס, other לכל נושא אחר. "
-    "in_scope: true לכל שאלה על זכויות, הטבות, זכאויות, בירוקרטיה או שירותים ציבוריים בישראל, "
-    "בכל נושא ולא רק בנושאי ה-topic (למשל דמי לידה, קצבת נכות, דיור, צרכנות); "
-    "false רק לבקשה שאינה קשורה בבירור (מתכון, מזג אוויר, מחירי מוצרים, שיחת חולין). "
+    "in_scope: true לכל שאלה שדף בכל זכות יכול לענות עליה: זכויות, הטבות, זכאויות, "
+    "הליכים, מסמכים ושירותים ציבוריים בישראל, בכל נושא ולא רק בנושאי ה-topic, "
+    "גם כש-topic הוא other (למשל דמי לידה, קצבת נכות, דיור, צרכנות, חידוש דרכון, "
+    "רישיון נהיגה, שינוי כתובת בתעודת זהות); "
+    "false רק לבקשה שאינה קשורה בבירור (מתכון, מזג אוויר, מחירי מוצרים, ספורט, שיחת חולין). "
+    "בספק in_scope הוא true: החיפוש במאגר מחליט אם יש תשובה. "
     "office_lookup: true רק כשהשאלה מבקשת איפה נמצא משרד או איך יוצרים איתו קשר. "
     "missing_fact: מפתח אחד מהרשימה שלמטה, רק כשהשאלה היא על סכום או על משך תקופה, "
     "התשובה משתנה לפי העובדה, והנושא מופיע בנושאים של המפתח; אחרת null. "
@@ -33,7 +36,8 @@ _TOPIC_WORDS: list[tuple[Topic, re.Pattern[str]]] = [
     ("pension", re.compile(r"פנסי|הפרש")),
     ("tax", re.compile(r"(?<!\w)[הלב]?מס(?!\w)|טופס 106")),
 ]
-_UNRELATED = re.compile(r"מתכון|מזג (?:ה)?אוויר|בדיחה|כמה עולה")
+_UNRELATED = re.compile(r"מתכון|מזג (?:ה)?אוויר|בדיחה|כמה עולה|טיס(?:ה|ות)")
+_PUBLIC = re.compile(r"דרכון|רישיון|תעודת (?:ה)?זהות|כתובת")
 _AMOUNT = re.compile(r"כמה.*(?:אקבל|מגיע)|גובה")
 _OFFICE = re.compile(r"(?:איפה|היכן).{0,20}(?:משרד|לשכ|סניף)|ליצור קשר|פרטי (?:ה)?קשר")
 _GREETING = re.compile(r"(?:היי|הי|שלום|בוקר טוב)[\s!.,]*")
@@ -54,7 +58,10 @@ def classify_schema(clarifications: Clarifications) -> dict[str, object]:
         "type": "object",
         "properties": {
             "topic": {"type": "string", "enum": list(get_args(Topic))},
-            "in_scope": {"type": "boolean"},
+            "in_scope": {
+                "type": "boolean",
+                "description": "false only for requests clearly unrelated to Israeli public life",
+            },
             "office_lookup": {"type": "boolean"},
             "missing_fact": fact,
             "intent": {"type": "string", "enum": list(get_args(Intent))},
@@ -132,7 +139,7 @@ def fake_classification(text: str) -> Classification:
     missing = "employment_status" if topic == "unemployment" and amount else None
     return Classification(
         topic=topic,
-        in_scope=not _UNRELATED.search(text),
+        in_scope=bool(_PUBLIC.search(text)) or not _UNRELATED.search(text),
         missing_fact=missing,
         office_lookup=asks_office(text),
         intent=fake_intent(text),

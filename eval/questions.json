@@ -33,7 +33,9 @@
     "expected_urls": [
       "https://www.kolzchut.org.il/he/דמי_אבטלה",
       "https://www.kolzchut.org.il/he/מדריך_בנושא_התפטרות_מעבודה",
-      "https://www.kolzchut.org.il/he/התפטרות_בנסיבות_המזכות_בדמי_אבטלה_ללא_תקופת_המתנה"
+      "https://www.kolzchut.org.il/he/התפטרות_בנסיבות_המזכות_בדמי_אבטלה_ללא_תקופת_המתנה",
+      "https://www.kolzchut.org.il/he/זכאות_לדמי_אבטלה",
+      "https://www.kolzchut.org.il/he/חופשה_ללא_תשלום"
     ],
     "expect_refusal": false
   },
@@ -52,7 +54,8 @@
     "expected_urls": [
       "https://www.kolzchut.org.il/he/דמי_אבטלה",
       "https://www.kolzchut.org.il/he/התייצבות_בשירות_התעסוקה",
-      "https://www.kolzchut.org.il/he/מדריך_בנושא_פיטורים"
+      "https://www.kolzchut.org.il/he/מדריך_בנושא_פיטורים",
+      "https://www.kolzchut.org.il/he/רישום_ראשוני_ללשכת_התעסוקה_באופן_מקוון_(באינטרנט)"
     ],
     "expect_refusal": false
   },
@@ -68,7 +71,8 @@
     "id": "q08",
     "question": "כמה ימים משלמים דמי אבטלה?",
     "expected_urls": [
-      "https://www.kolzchut.org.il/he/דמי_אבטלה"
+      "https://www.kolzchut.org.il/he/דמי_אבטלה",
+      "https://www.kolzchut.org.il/he/הגשת_תביעה_לדמי_אבטלה"
     ],
     "expect_refusal": false
   },
@@ -86,7 +90,8 @@
     "question": "מה קורה אם לא מתייצבים בלשכת התעסוקה?",
     "expected_urls": [
       "https://www.kolzchut.org.il/he/דמי_אבטלה",
-      "https://www.kolzchut.org.il/he/התייצבות_בשירות_התעסוקה"
+      "https://www.kolzchut.org.il/he/התייצבות_בשירות_התעסוקה",
+      "https://www.kolzchut.org.il/he/רישום_ראשוני_ללשכת_התעסוקה_באופן_מקוון_(באינטרנט)"
     ],
     "expect_refusal": false
   },
@@ -95,7 +100,10 @@
     "question": "כמה המעסיק חייב להפריש לפנסיה?",
     "expected_urls": [
       "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים",
-      "https://www.kolzchut.org.il/he/חובת_ביטוח_פנסיוני_לעובדים"
+      "https://www.kolzchut.org.il/he/חובת_ביטוח_פנסיוני_לעובדים",
+      "https://www.kolzchut.org.il/he/ביטוח_פנסיוני_לעובדי_שמירה_ואבטחה",
+      "https://www.kolzchut.org.il/he/ביטוח_פנסיוני_לעובדי_חברות_ניקיון_ותחזוקה",
+      "https://www.kolzchut.org.il/he/ביטוח_פנסיוני_לעובדי_קבלן_בתחומי_השמירה_והניקיון_בגופים_ציבוריים"
     ],
     "expect_refusal": false
   },
@@ -105,7 +113,8 @@
     "expected_urls": [
       "https://www.kolzchut.org.il/he/פנסיה_וחיסכון_ארוך_טווח_לשכירים",
       "https://www.kolzchut.org.il/he/הפרשות_לביטוח_פנסיוני_לעובד_או_עובדת_שהגיעו_לגיל_פרישה",
-      "https://www.kolzchut.org.il/he/כשהעובד_נקלט_לעבודה_בגיל_פרישת_חובה_או_לאחריו,_חובה_על_מעסיק_לבדוק_האם_העובד_מקבל_קצבה_השוללת_את_זכאותו_לביטוח_פנסיוני"
+      "https://www.kolzchut.org.il/he/כשהעובד_נקלט_לעבודה_בגיל_פרישת_חובה_או_לאחריו,_חובה_על_מעסיק_לבדוק_האם_העובד_מקבל_קצבה_השוללת_את_זכאותו_לביטוח_פנסיוני",
+      "https://www.kolzchut.org.il/he/חובת_ביטוח_פנסיוני_לעובדים"
     ],
     "expect_refusal": false
   },

@@ -166,6 +166,8 @@ START ──history──> condense ──not a question──> nudge -> END
 - `classify`: one Haiku call with a JSON schema: topic (`unemployment`, `pension`, `tax`,
   `other`), in scope or not, an office lookup flag, and a missing fact as a key from
   `config/clarifications.json` (see Conversations; `condense` runs first when there is history).
+  Scope is decided by retrieval, not by the topic list: `classify` refuses only clearly unrelated
+  requests, and an `other` question (a passport, a licence) goes on to `retrieve`.
 - `clarify`: a LangGraph interrupt with the key's fixed Hebrew question. The CLI prints it and reads
   the reply from stdin, or takes it from `--reply`. `condense` folds the reply into the question and
   `classify` runs once more; a second missing fact does not interrupt again.

@@ -27,6 +27,7 @@ runner = CliRunner()
 ELIGIBLE = "מי זכאי לדמי אבטלה?"
 AMOUNT = "כמה אקבל דמי אבטלה?"
 RECIPE = "מה המתכון לחלה מתוקה?"
+PASSPORT = "איך מחדשים דרכון ישראלי?"
 
 
 def test_criterion_1_in_scope_path_and_out_of_scope_refusal(
@@ -49,6 +50,10 @@ def test_criterion_1_in_scope_path_and_out_of_scope_refusal(
     assert state.path == ["classify", "refuse"] and state.final == REFUSAL_SENTENCE
     assert model.calls == 0 and state.hits == []
     assert [c.role for c in guard.recorder.record.calls] == ["classify"]
+
+    state = converse(deps, make_guard(priced), PASSPORT, [], None)
+    assert (state.topic, state.in_scope, state.office_lookup) == ("other", True, False)
+    assert state.path[:2] == ["classify", "retrieve"] and state.missing_fact is None
 
 
 def test_criterion_2_one_clarification_then_best_reading(
@@ -197,6 +202,11 @@ def test_whole_path_estimate_aborts_before_the_first_call(
         ("כמה כסף זה דמי לידה?", "other", True, None),
         ("מה מזג האוויר מחר?", "other", False, None),
         (RECIPE, "other", False, None),
+        (PASSPORT, "other", True, None),
+        ("כמה עולה לחדש דרכון?", "other", True, None),
+        ("איך מוציאים רישיון נהיגה לאופנוע?", "other", True, None),
+        ("איך משנים כתובת בתעודת הזהות?", "other", True, None),
+        ("כמה עולה כרטיס טיסה לאילת?", "other", False, None),
     ],
 )
 def test_fake_classification(text: str, topic: str, in_scope: bool, missing: str | None) -> None:

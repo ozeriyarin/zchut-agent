@@ -342,7 +342,7 @@ def test_criterion_12_rights_questions_are_in_scope_whatever_the_topic(
     """criterion 12: "Any question about rights, benefits or public services in Israel is in scope regardless of topic; only clearly unrelated requests are out of scope." """
     system = classify_system(load_clarifications(CLARIFICATIONS))
     assert "בכל נושא ולא רק בנושאי ה-topic" in system
-    for example in ("דמי לידה", "קצבת נכות", "דיור", "צרכנות", "מתכון", "מזג אוויר"):
+    for example in ("דמי לידה", "קצבת נכות", "דיור", "צרכנות", "מתכון", "מזג אוויר", "דרכון"):
         assert example in system
     deps = make_graph_deps(fixture_store, FakeAnswerModel(), 0.3, FakeVerifier())
     for question in ("כמה כסף זה דמי לידה?", "כמה ימים זה חופשת לידה?"):
