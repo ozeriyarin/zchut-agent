@@ -29,7 +29,12 @@ from zchut.config import ConfigError, Prices
 from zchut.eval.conversations import load_conversations, turn_outcome
 from zchut.graph.build import converse
 from zchut.graph.clarifications import load_clarifications
-from zchut.graph.classify import FakeClassifier, classify_schema, classify_system
+from zchut.graph.classify import (
+    FakeClassifier,
+    classify_schema,
+    classify_system,
+    fake_classification,
+)
 from zchut.graph.condense import (
     CONDENSE_SCHEMA,
     CONDENSE_SYSTEM,
@@ -40,8 +45,15 @@ from zchut.graph.condense import (
     Turns,
 )
 from zchut.graph.offices import ESCALATION_HEAD, load_offices, office_line
-from zchut.graph.state import Classification, Session, Topic
-from zchut.graph.verify import FakeVerifier
+from zchut.graph.state import Classification, Session, Topic, Verdict
+from zchut.graph.verify import (
+    OMISSION_LINE,
+    VERIFY_SCHEMA,
+    VERIFY_SYSTEM,
+    FakeVerifier,
+    HaikuVerifier,
+    trim_unsupported,
+)
 from zchut.index.store import InMemoryVectorStore
 from zchut.run.ask import retrieve
 from zchut.run.converse import record_state, run_conversation, take_turn
@@ -235,7 +247,7 @@ def test_criterion_8_v4b_pytest_passes_every_criterion_quoted() -> None:
     """criterion 8: "`pytest` passes; every criterion has a test whose name quotes it." """
     from test_spec_coverage import criteria
 
-    assert len(criteria("2026-10-15-zchut-v4b-conversation-quality")) == 11
+    assert len(criteria("2026-10-15-zchut-v4b-conversation-quality")) == 14
 
 
 def test_criterion_9_greeting_on_the_first_turn_gets_the_welcome_line(
@@ -322,3 +334,67 @@ def test_criterion_11_foreign_script_scrubbed_and_counted(
     assert run_conversation(ELIGIBLE, [], deps, guard, None).exit_code == 0
     record = guard.recorder.record
     assert (record.scrubbed, record.markdown_stripped) == (scrubbed, 2)
+
+
+def test_criterion_12_rights_questions_are_in_scope_whatever_the_topic(
+    fixture_store: InMemoryVectorStore, priced: Prices
+) -> None:
+    """criterion 12: "Any question about rights, benefits or public services in Israel is in scope regardless of topic; only clearly unrelated requests are out of scope." """
+    system = classify_system(load_clarifications(CLARIFICATIONS))
+    assert "בכל נושא ולא רק בנושאי ה-topic" in system
+    for example in ("דמי לידה", "קצבת נכות", "דיור", "צרכנות", "מתכון", "מזג אוויר"):
+        assert example in system
+    deps = make_graph_deps(fixture_store, FakeAnswerModel(), 0.3, FakeVerifier())
+    for question in ("כמה כסף זה דמי לידה?", "כמה ימים זה חופשת לידה?"):
+        result = fake_classification(question)
+        assert (result.topic, result.in_scope) == ("other", True)
+        state = converse(deps, make_guard(priced), question, [], None)
+        assert state.path[:2] == ["classify", "retrieve"] and state.hits
+    assert deps.offices["other"].name == "המוסד לביטוח לאומי"
+    recipe = converse(deps, make_guard(priced), "מה המתכון לחלה מתוקה?", [], None)
+    assert (recipe.in_scope, recipe.path) == (False, ["classify", "refuse"])
+
+
+PARAPHRASE = "ביטל כחוזה עם אחד מהמעסיקים"
+
+
+def test_criterion_13_unsupported_sentences_trimmed_and_counted(
+    fixture_store: InMemoryVectorStore, priced: Prices
+) -> None:
+    """criterion 13: "When the verifier marks some claims unsupported, only the sentences carrying them are removed, a Hebrew omission line is appended, and the record counts the trimmed sentences; escalation happens only when nothing substantive remains." """
+    hits = [hit(1), hit(2, TAX, None), hit(3)]
+    lines = "מי שביטל חוזה עם אחד מהמעסיקים זכאי [1]. מי שעבד 12 חודשים זכאי [2].\nנרשמים [3]."
+    draft = resolve(lines, hits)
+    trimmed, count = trim_unsupported(draft, hits, [PARAPHRASE])
+    assert trimmed.text == f"מי שעבד 12 חודשים זכאי [1].\nנרשמים [2].\n\n{OMISSION_LINE}"
+    assert [(c.number, c.chunk.id) for c in trimmed.citations] == [(1, "c-2"), (2, "c-3")]
+    assert count == 1
+    assert trim_unsupported(draft, hits, ["דמי אבטלה לכל החיים"]) == (draft, 0)
+    lone = resolve("משפט ראשון [1]. הקדמה בלי מקור.", hits)
+    assert trim_unsupported(lone, hits, ["משפט ראשון"]) == (lone, 0)
+
+    canned = "דמי אבטלה משולמים לכל החיים. צריך להירשם בשירות התעסוקה [1]."
+    deps = make_graph_deps(fixture_store, FakeAnswerModel(canned=canned), 0.3, FakeVerifier())
+    guard = make_guard(priced)
+    state = converse(deps, guard, ELIGIBLE, [], None)
+    assert state.path[-2:] == ["verify", "final"] and state.final is not None
+    kept = f"צריך להירשם בשירות התעסוקה [1].\n\n{OMISSION_LINE}\n\nמקורות:\n[1] "
+    assert state.final.startswith(kept) and "לכל החיים" not in state.final
+    record_state(guard.recorder.record, deps, state)
+    graph = guard.recorder.record.graph
+    assert graph is not None and (graph.verified, graph.escalated) == (False, False)
+    assert graph.trimmed_sentences == 1
+
+
+def test_criterion_14_verifier_prompt_accepts_paraphrase(priced: Prices) -> None:
+    """criterion 14: "The verifier prompt treats a paraphrase of a sourced fact as supported." """
+    assert "פרפרזה של אותה עובדה (למשל 'ביטל חוזה' במקום 'פוטר') נתמכת" in VERIFY_SYSTEM
+    assert "לא נתמכות רק עובדות, מספרים, תאריכים או תנאים שאינם מופיעים בקטעים" in VERIFY_SYSTEM
+    sent: list[dict[str, object]] = []
+    client = anthropic_client([{"supported": True, "unsupported_claims": []}], sent)
+    verifier = HaikuVerifier(client, "claude-haiku-4-5", 400)
+    assert verifier.verify(f"{PARAPHRASE} [1].", [hit(1)], make_guard(priced)) == Verdict(
+        supported=True
+    )
+    assert sent[0]["system"] == VERIFY_SYSTEM
+    assert sent[0]["output_config"] == {"format": {"type": "json_schema", "schema": VERIFY_SCHEMA}}

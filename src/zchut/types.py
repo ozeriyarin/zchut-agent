@@ -117,6 +117,7 @@ class GraphRecord(BaseModel):
     escalated: bool
     clarified: bool
     office_lookup: bool = False
+    trimmed_sentences: int = 0
 
 
 class CrawlRecord(BaseModel):

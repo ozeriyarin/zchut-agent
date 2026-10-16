@@ -24,6 +24,7 @@ def record_state(record: RunRecord, deps: GraphDeps, state: ConversationState) -
         escalated=state.escalation is not None,
         clarified=state.clarified,
         office_lookup=state.office_lookup,
+        trimmed_sentences=state.trimmed_sentences,
     )
 
 

@@ -19,7 +19,7 @@ from zchut.graph.classify import Classifier, asks_office
 from zchut.graph.condense import GREETING_LINE, NUDGE_LINE, Condenser, Turns
 from zchut.graph.offices import Office, escalation_text, office_line
 from zchut.graph.state import HISTORY_CAP, ConversationState, Session, Topic, Verdict
-from zchut.graph.verify import Verifier
+from zchut.graph.verify import Verifier, trim_unsupported
 from zchut.run.ask import AskDeps, respond, retrieve
 from zchut.run.cost_guard import CostGuard, cost_usd
 from zchut.tokens import estimate_tokens
@@ -126,7 +126,11 @@ def build_graph(deps: GraphDeps, guard: CostGuard) -> Graph:
     def verify(s: ConversationState) -> Update:
         assert deps.verifier is not None and s.draft is not None
         hits = display_hits(s.draft, s.hits)
-        return {"verdict": deps.verifier.verify(s.draft.text, hits, guard)}
+        verdict = deps.verifier.verify(s.draft.text, hits, guard)
+        if verdict.supported:
+            return {"verdict": verdict}
+        draft, trimmed = trim_unsupported(s.draft, s.hits, verdict.unsupported_claims)
+        return {"verdict": verdict, "draft": draft, "trimmed_sentences": trimmed}
 
     def final(s: ConversationState) -> Update:
         assert s.draft is not None
@@ -167,7 +171,8 @@ def build_graph(deps: GraphDeps, guard: CostGuard) -> Graph:
         return "refuse" if should_refuse(s.hits, deps.ask.min_score) else "answer"
 
     def after_verify(s: ConversationState) -> str:
-        return "final" if s.verdict and s.verdict.supported else "escalate"
+        kept = s.verdict is not None and (s.verdict.supported or s.trimmed_sentences > 0)
+        return "final" if kept else "escalate"
 
     steps = {
         "condense": condense,

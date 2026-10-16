@@ -52,6 +52,7 @@ class ConversationState(BaseModel):
     verdict: Verdict | None = None
     final: str | None = None
     escalation: str | None = None
+    trimmed_sentences: int = 0
     path: Annotated[list[str], operator.add] = []
     calls: Annotated[list[CallRecord], operator.add] = []
 

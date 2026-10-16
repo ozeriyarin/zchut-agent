@@ -93,7 +93,7 @@ def test_criterion_3_unsupported_draft_is_replaced_by_escalation(
     fixture_store: InMemoryVectorStore, priced: Prices
 ) -> None:
     """criterion 3: "When the verifier returns `supported: false`, the final output is the escalation text for the topic from `config/offices.json`, including the unsupported claims, and the draft answer is not shown." """
-    model = FakeAnswerModel(canned="דמי אבטלה משולמים לכל החיים. צריך להירשם בשירות התעסוקה [1].")
+    model = FakeAnswerModel(canned="דמי אבטלה משולמים לכל החיים.")
     deps = make_graph_deps(fixture_store, model, 0.3, FakeVerifier())
     state = converse(deps, make_guard(priced), ELIGIBLE, [], None)
     office = load_offices(OFFICES)["unemployment"]
@@ -102,7 +102,7 @@ def test_criterion_3_unsupported_draft_is_replaced_by_escalation(
     assert state.final.startswith(ESCALATION_HEAD)
     assert office.contact_url in state.final
     assert "לא הצלחתי לאמת:\n- דמי אבטלה משולמים לכל החיים" in state.final
-    assert "צריך להירשם" not in state.final
+    assert state.trimmed_sentences == 0
 
 
 def test_criterion_6_record_holds_the_graph_and_no_user_text(
@@ -136,6 +136,7 @@ def test_criterion_6_record_holds_the_graph_and_no_user_text(
         "escalated": False,
         "clarified": True,
         "office_lookup": False,
+        "trimmed_sentences": 0,
     }
     assert [c["role"] for c in record["calls"]] == [
         "condense",
@@ -192,7 +193,9 @@ def test_whole_path_estimate_aborts_before_the_first_call(
         (f"{AMOUNT}\nעצמאי", "unemployment", True, None),
         ("כמה המעסיק חייב להפריש לפנסיה?", "pension", True, None),
         ("תוך כמה זמן מתקבל החזר המס?", "tax", True, None),
-        ("אילו מסמכים צריך להכין?", "other", False, None),
+        ("אילו מסמכים צריך להכין?", "other", True, None),
+        ("כמה כסף זה דמי לידה?", "other", True, None),
+        ("מה מזג האוויר מחר?", "other", False, None),
         (RECIPE, "other", False, None),
     ],
 )

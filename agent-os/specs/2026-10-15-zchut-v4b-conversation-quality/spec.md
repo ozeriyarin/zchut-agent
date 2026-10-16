@@ -30,6 +30,9 @@ A multi-turn chat behaves like a clerk who remembers the last thing you said: fo
 9. A greeting or reaction on the first turn gets the fixed welcome line with no retrieval or answer call.
 10. An office question answered from the corpus still ends with the office's name and contact page.
 11. Characters outside Hebrew, Latin, digits and punctuation are removed from the answer and counted in the record.
+12. Any question about rights, benefits or public services in Israel is in scope regardless of topic; only clearly unrelated requests are out of scope.
+13. When the verifier marks some claims unsupported, only the sentences carrying them are removed, a Hebrew omission line is appended, and the record counts the trimmed sentences; escalation happens only when nothing substantive remains.
+14. The verifier prompt treats a paraphrase of a sourced fact as supported.
 
 ## Tasks
 

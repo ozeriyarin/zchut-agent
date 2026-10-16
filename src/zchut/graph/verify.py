@@ -3,12 +3,14 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from typing import Protocol
 
 import anthropic
 import httpx
 from pydantic import ValidationError
 
+from zchut.answer.citations import display_hits, resolve
 from zchut.answer.model import AnswerError, haiku_json
 from zchut.answer.prompt import numbered_sources
 from zchut.config import JevSettings
@@ -16,7 +18,7 @@ from zchut.graph.state import Verdict
 from zchut.http_retry import send_with_backoff
 from zchut.run.cost_guard import CostGuard
 from zchut.tokens import estimate_tokens
-from zchut.types import Hit, Usage
+from zchut.types import Answer, Hit, Usage
 
 FAKE_VERIFIER_MODEL = "fake-verifier"
 OPENROUTER_DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions"
@@ -25,7 +27,8 @@ VERIFY_SYSTEM = (
     "בדוק אם כל טענה בטיוטה נתמכת בקטעים. "
     "טענה אינה נתמכת רק אם אין קטע שאומר אותה, או אם מספר, סכום, תאריך או פרק זמן בה "
     "שונה מהכתוב בקטע. ניסוח במילים אחרות, השמטת פרטים ואמירה זהירה כמו 'זה תלוי בנסיבות' "
-    "אינם הופכים טענה ללא נתמכת. החזר JSON בלבד לפי הסכמה: "
+    "אינם הופכים טענה ללא נתמכת. פרפרזה של אותה עובדה (למשל 'ביטל חוזה' במקום 'פוטר') נתמכת; "
+    "לא נתמכות רק עובדות, מספרים, תאריכים או תנאים שאינם מופיעים בקטעים. החזר JSON בלבד לפי הסכמה: "
     "supported הוא true רק כשכל הטענות נתמכות; unsupported_claims מפרט כל טענה שאינה נתמכת "
     "במשפט קצר בעברית."
 )
@@ -40,6 +43,8 @@ VERIFY_SCHEMA: dict[str, object] = {
 }
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 _CITED = re.compile(r"\[\d+(?:,\s*\d+)*\]")
+_WORD = re.compile(r"\w+")
+OMISSION_LINE = "חלק מהתשובה הושמט כי לא אומת מול המקורות."
 
 
 class Verifier(Protocol):
@@ -167,3 +172,27 @@ class FakeVerifier:
 def uncited_sentences(draft: str) -> list[str]:
     sentences = (s.strip() for s in _SENTENCE_END.split(draft))
     return [s.rstrip(".!?") for s in sentences if s and not _CITED.search(s)]
+
+
+def carries(sentence: str, claim: str) -> bool:
+    flagged, said = _WORD.findall(claim), set(_WORD.findall(_CITED.sub("", sentence)))
+    return bool(flagged) and sum(w in said for w in flagged) / len(flagged) >= 0.6
+
+
+def trim_unsupported(
+    draft: Answer, hits: Sequence[Hit], claims: Sequence[str]
+) -> tuple[Answer, int]:
+    # (draft, 0) when no sentence carries a claim or no cited sentence would remain.
+    lines, trimmed = [], 0
+    for line in draft.text.split("\n"):
+        sentences = _SENTENCE_END.split(line)
+        kept = [s for s in sentences if not any(carries(s, c) for c in claims)]
+        trimmed += len(sentences) - len(kept)
+        lines.append(" ".join(kept))
+    text = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+    if not trimmed or not _CITED.search(text):
+        return draft, 0
+    cited = resolve(text, display_hits(draft, hits))
+    return replace(
+        draft, text=f"{cited.text}\n\n{OMISSION_LINE}", citations=cited.citations
+    ), trimmed
